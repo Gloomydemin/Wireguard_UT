@@ -1,4 +1,4 @@
-clickable_minimum_required: '7.5.0'
+clickable_minimum_required: '8.6.0'
 builder: cmake
 kill: qmlscene
 ignore_review_warnings: true

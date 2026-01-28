@@ -6,7 +6,8 @@
     "hooks": {
         "wireguard": {
             "apparmor": "wireguard.apparmor",
-            "desktop":  "wireguard.desktop"
+            "desktop": "wireguard.desktop",
+            "content-hub": "wireguard.content-hub"
         }
     },
     "version": "1.0.0",

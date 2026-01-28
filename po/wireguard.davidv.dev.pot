@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: wireguard.davidv.dev\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-26 03:37+0000\n"
+"POT-Creation-Date: 2026-01-28 11:39+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -33,23 +33,65 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:16 wireguard.desktop.in.h:1
+#: ../qml/pages/ImportPage.qml:17
+msgid "Select File"
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:19 ../qml/pages/PickProfilePage.qml:19
+#: wireguard.desktop.in.h:1
 msgid "Wireguard"
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:57
+#: ../qml/pages/PickProfilePage copy.qml:72 ../qml/pages/PickProfilePage.qml:61
+msgid "Import failed: "
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:75 ../qml/pages/PickProfilePage.qml:64
+msgid "Profile imported successfully"
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:162
+#: ../qml/pages/PickProfilePage.qml:151
+msgid "Add Profile"
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:215
+#: ../qml/pages/PickProfilePage.qml:204
+msgid "Import .conf/.zip"
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:264
+#: ../qml/pages/PickProfilePage.qml:252
+msgid "Scan QR Code"
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:312
+#: ../qml/pages/PickProfilePage.qml:300
+msgid "Create from scratch"
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:382
+#: ../qml/pages/PickProfilePage.qml:370
+msgid "Importing profile..."
+msgstr ""
+
+#: ../qml/pages/PickProfilePage copy.qml:414
+#: ../qml/pages/PickProfilePage.qml:402
 msgid "Connecting.."
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:63
+#: ../qml/pages/PickProfilePage copy.qml:420
+#: ../qml/pages/PickProfilePage.qml:408
 msgid "Disconnected"
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:77
+#: ../qml/pages/PickProfilePage copy.qml:434
+#: ../qml/pages/PickProfilePage.qml:422
 msgid "Failed:"
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:81
+#: ../qml/pages/PickProfilePage copy.qml:438
+#: ../qml/pages/PickProfilePage.qml:426
 msgid "Profile %1 deleted"
 msgstr ""
 

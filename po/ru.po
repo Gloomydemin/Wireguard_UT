@@ -77,7 +77,7 @@ msgstr "Создать"
 
 #: ../qml/pages/ProfilePage.qml:80
 msgid "Copy pubkey"
-msgstr "Копировать открытый ключ"
+msgstr "Копировать"
 
 #: ../qml/pages/ProfilePage.qml:92
 msgid "IP address (with prefix length)"

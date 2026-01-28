@@ -33,17 +33,28 @@ UITK.Page {
         ]
     }
     
-    // Импорт страницы с Content Hub
-    function openImportPage() {
-        var importPage = stack.push(Qt.resolvedUrl("ImportPage.qml"), {
-            "contentType": ContentHub.ContentType.Documents,
-            "handler": ContentHub.ContentHandler.Source
-        })
-        
-        importPage.importFinished.connect(function(filePath) {
-            handleFileImport(filePath)
-        })
+    // Функция открытия страницы импорта
+    // В PickProfilePage.qml обновляем функцию openImportPage
+function openImportPage() {
+    console.log("Opening import page")
+    
+    var importPage = stack.push(Qt.resolvedUrl("ImportPage.qml"))
+    
+    if (!importPage) {
+        console.log("Failed to create ImportPage")
+        return
     }
+    
+    // Подключаем сигналы
+    importPage.importFinished.connect(function(filePath) {
+        console.log("Import finished with file:", filePath)
+        handleFileImport(filePath)
+    })
+    
+    importPage.importCancelled.connect(function() {
+        console.log("Import cancelled by user")
+    })
+}
     
     // Функция обработки импорта файла
     function handleFileImport(filePath) {
@@ -243,7 +254,8 @@ UITK.Page {
                             anchors.verticalCenter: parent.verticalCenter
                             height: units.gu(3)
                             width: height
-                            name: "camera"
+                            // Используем другую иконку, если "camera" недоступна
+                            name: "barcode" // или "camera-app" или "view-grid"
                             color: theme.palette.normal.foregroundText
                         }
                         
@@ -545,12 +557,13 @@ UITK.Page {
 
     Timer {
         repeat: true
-        interval: 3000  // Реже, раз в 3 сек
-        running: listmodel.count > 0
-        onTriggered: showStatus()
+        interval: 1000
+        running: true
+        onTriggered: {
+            if(listmodel.count > 0)
+                showStatus();
+        }
     }
-
-
 
     function peerName(pubkey, peers) {
         for (var i = 0; i < peers.count; i++) {
@@ -600,10 +613,24 @@ UITK.Page {
             }
         })
     }
-    function showStatus() {
-        python.call('vpn.instance.get_status', [],
-                    function (all_status) {
+function showStatus() {
+    // Проверяем, установлен ли пароль
+    if (!root.pwd || root.pwd.length === 0) {
+        console.log("showStatus: Skipping - no password")
+        return
+    }
+    
+    python.call('vpn.instance.interface.current_status_by_interface', [],
+                function (all_status) {
+                    if (!all_status) {
+                        console.log("showStatus: No status returned")
+                        return
+                    }
+                    
+                    try {
                         const keys = Object.keys(all_status)
+                        console.log("showStatus: Found", keys.length, "interfaces")
+                        
                         for (var i = 0; i < listmodel.count; i++) {
                             const entry = listmodel.get(i)
 
@@ -621,28 +648,45 @@ UITK.Page {
                             }
                             listmodel.setProperty(i, 'c_status', status)
                         }
-                    })
-    }
+                    } catch (error) {
+                        console.log("showStatus error:", error)
+                    }
+                })
+}
 
+    
+    // В PickProfilePage.qml
     Python {
         id: python
         Component.onCompleted: {
-            addImportPath(Qt.resolvedUrl("../../src/"))
-            importModule("vpn", function () {
-                // 1. передать пароль
-                python.call("vpn.instance.set_pwd", [root.pwd], function() {
-                    // 2. загрузить профили
-                    populateProfiles()
-                    // 3. после этого можно запускать showStatus
-                    Qt.callLater(function() {
-                        if (listmodel.count > 0)
-                            showStatus()
-                    })
-                })
+            addImportPath(Qt.resolvedUrl('../../src/'))
+            importModule('vpn', function (success) {
+                console.log("vpn module imported:", success)
+                
+                if (!success) {
+                    console.log("Failed to import vpn module")
+                    return
+                }
+                
+                // Убедитесь, что root.pwd передается из родительского компонента
+                console.log("root.pwd value:", root.pwd ? "***" + root.pwd.substring(Math.max(0, root.pwd.length - 3)) : "empty")
+                
+                if (root.pwd && root.pwd.length > 0) {
+                    python.call('vpn.instance.set_pwd', [root.pwd], function(result){
+                        console.log("set_pwd returned:", result)
+                        
+                        // Проверяем, что interface создан
+                        python.call('vpn.instance.can_use_kernel_module', [], function(canUseKmod){
+                            console.log("can_use_kernel_module:", canUseKmod)
+                            populateProfiles();
+                        });
+                    });
+                } else {
+                    console.log("Warning: No password available")
+                    // Все равно пробуем загрузить профили, но interface не будет работать
+                    populateProfiles();
+                }
             })
         }
     }
-
-
-
 }

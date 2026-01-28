@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg style="enable-background:new" xmlns="http://www.w3.org/2000/svg" height="512" viewBox="0 0 512 512" width="512" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <radialGradient id="b" gradientUnits="userSpaceOnUse" cy="-256.2" cx="-256" gradientTransform="matrix(0 -1.498 -1.498 0 -127.6 -127.5)" r="96">
+   <stop stop-opacity="0" offset="0"/>
+   <stop stop-opacity="0" offset=".8987"/>
+   <stop stop-opacity=".2617" offset=".9493"/>
+   <stop offset="1"/>
+  </radialGradient>
+  <radialGradient id="a" gradientUnits="userSpaceOnUse" cy="-256" cx="-258" gradientTransform="matrix(1.084 0 0 1.084 21.64 21.47)" r="176">
+   <stop stop-opacity="0" offset="0"/>
+   <stop offset=".5048"/>
+   <stop stop-opacity="0" offset="1"/>
+  </radialGradient>
+ </defs>
+ <g>
+  <path style="color:#000000;enable-background:accumulate" d="m0 0v512h512v-512z" fill="#eeecea"/>
+  <path opacity=".4" style="color:#000000;enable-background:accumulate" d="m0 256v256h512v-256h-483.6z" fill="#fff"/>
+  <circle style="color:#000000;enable-background:accumulate" cx="428" cy="84" r="12" fill="#df382c"/>
+ </g>
+ <g>
+  <circle opacity=".1" style="color:#000000;enable-background:accumulate" fill-opacity=".9961" transform="matrix(0,-1,-1,0,0,0)" cy="-256" cx="-258" r="176"/>
+  <circle opacity=".2" style="color:#000000;enable-background:accumulate" transform="matrix(0,-1,-1,0,0,0)" cy="-256" cx="-258" r="190.8" fill="url(#a)"/>
+  <circle style="color:#000000;enable-background:accumulate" cx="-256" transform="matrix(0,-1,-1,0,0,0)" cy="-256" r="176" fill="#fcfcfc"/>
+  <circle style="color:#000000;enable-background:accumulate" transform="matrix(0,-1,-1,0,0,0)" cy="-256.2" cx="-256" r="143.8" fill="#b6e2f3"/>
+  <path opacity=".05" style="color:#000000;enable-background:accumulate" d="m256.2 112.2a143.8 143.8 0 0 0 -143.8 143.8 143.8 143.8 0 0 0 143.8 143.8 143.8 143.8 0 0 0 143.8 -143.8 143.8 143.8 0 0 0 -143.8 -143.8zm0 51.45a92.35 92.35 0 0 1 92.35 92.35 92.35 92.35 0 0 1 -92.35 92.35 92.35 92.35 0 0 1 -92.4 -92.3 92.35 92.35 0 0 1 92.4 -92.4z" fill="url(#b)"/>
+  <circle style="color:#000000;enable-background:accumulate" transform="matrix(0,-1,-1,0,0,0)" cy="-256.2" cx="-256" r="110.8" fill="#369ad4"/>
+  <circle style="color:#000000;enable-background:accumulate" transform="matrix(0,-1,-1,0,0,0)" cy="-256.2" cx="-256" r="71.8" fill="#1c629d"/>
+  <circle style="color:#000000;enable-background:accumulate" cx="-256" transform="matrix(0,-1,-1,0,0,0)" cy="-256.2" r="40" fill="#10395c"/>
+  <circle opacity=".2330" style="color:#000000;enable-background:accumulate" cy="213.6" cx="299.4" r="51.45" fill="#fff"/>
+ </g>
+</svg>
