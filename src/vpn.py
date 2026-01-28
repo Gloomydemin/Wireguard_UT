@@ -313,3 +313,5 @@ if __name__ == "__main__":
     print("2. interface после set_pwd:", vpn.interface)
     print("3. safe_status:", vpn.safe_status())
     print("4. get_status:", vpn.get_status())
+
+#переписать save_profile 
