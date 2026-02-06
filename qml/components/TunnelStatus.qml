@@ -4,6 +4,7 @@ import QtGraphicalEffects 1.0
 
 Shape {
     property bool connected
+    property bool connecting: false
     property double size
     layer.enabled: true
     layer.samples: 6
@@ -13,8 +14,8 @@ Shape {
     id: spin
     ShapePath {
         id: shape
-        fillColor: connected ? "#13C265" : "white"
-        strokeColor: connected ? "#13C265" : "#ccc"
+        fillColor: connecting ? "#FFC107" : (connected ? "#13C265" : "white")
+        strokeColor: connecting ? "#FFC107" : (connected ? "#13C265" : "#ccc")
         strokeWidth: units.gu(0.1)
         capStyle: ShapePath.FlatCap
 

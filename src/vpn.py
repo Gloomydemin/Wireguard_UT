@@ -23,11 +23,20 @@ from vendor_paths import resolve_vendor_binary
 
 WG_PATH = resolve_vendor_binary("wg")
 
-CONFIG_DIR = Path('/home/phablet/.local/share/wireguard.davidv.dev')
+APP_ID = 'wireguard.sysadmin'
+CONFIG_DIR = Path(f'/home/phablet/.local/share/{APP_ID}')
+OLD_CONFIG_DIR = Path('/home/phablet/.local/share/wireguard.davidv.dev')
+if not CONFIG_DIR.exists() and OLD_CONFIG_DIR.exists():
+    CONFIG_DIR = OLD_CONFIG_DIR
 PROFILES_DIR = CONFIG_DIR / 'profiles'
-LOG_DIR = Path('/home/phablet/.cache/wireguard.davidv.dev')
 
+LOG_DIR = Path(f'/home/phablet/.cache/{APP_ID}')
+OLD_LOG_DIR = Path('/home/phablet/.cache/wireguard.davidv.dev')
+if not LOG_DIR.exists() and OLD_LOG_DIR.exists():
+    LOG_DIR = OLD_LOG_DIR
 
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 _ZBAR_LIB = None
@@ -323,6 +332,9 @@ class Vpn:
     def cleanup_userspace(self):
         if not self.interface:
             return "VPN interface not initialized"
+        # If sudo password isn't set, bail out quickly to avoid blocking UI on sudo prompts
+        if not self._sudo_pwd:
+            return None
         try:
             if not self.interface.userspace_running():
                 return None
@@ -484,62 +496,68 @@ class Vpn:
     def import_conf(self, path):
         imported_profiles = []
 
-        if path.endswith(".zip"):
-            with zipfile.ZipFile(path) as z:
-                confs = [n for n in z.namelist() if n.endswith(".conf")]
-                if not confs:
-                    return {"error": "No .conf in zip"}
+        try:
+            if path.endswith(".zip"):
+                with zipfile.ZipFile(path) as z:
+                    confs = [n for n in z.namelist() if n.endswith(".conf")]
+                    if not confs:
+                        return {"error": "No .conf in zip"}
 
-                tmp_dir = tempfile.mkdtemp(prefix="wg_import_")
+                    with tempfile.TemporaryDirectory(prefix="wg_import_") as tmp_dir:
+                        for conf_name in confs:
+                            tmp_path = os.path.join(tmp_dir, os.path.basename(conf_name))
+                            with open(tmp_path, 'wb') as f:
+                                f.write(z.read(conf_name))
 
-                for conf_name in confs:
-                    tmp_path = os.path.join(tmp_dir, os.path.basename(conf_name))
-                    with open(tmp_path, 'wb') as f:
-                        f.write(z.read(conf_name))
+                            # теперь по одному отдаем в parse_wireguard_conf
+                            profile_data = self.parse_wireguard_conf(tmp_path)
 
-                    # теперь по одному отдаем в parse_wireguard_conf
-                    profile_data = self.parse_wireguard_conf(tmp_path)
+                            # profile_data = (profile_name, ip_address, private_key, iface, extra_routes, dns_servers, peers)
+                            profile_name = profile_data[0]
+                            ip_address = profile_data[1]
+                            private_key = profile_data[2]
+                            interface_name = profile_data[3]
+                            extra_routes = profile_data[4]
+                            dns_servers = profile_data[5]
+                            peers = profile_data[6]
 
-                    # profile_data = (profile_name, ip_address, private_key, iface, extra_routes, dns_servers, peers)
-                    profile_name = profile_data[0]
-                    ip_address = profile_data[1]
-                    private_key = profile_data[2]
-                    interface_name = profile_data[3]
-                    extra_routes = profile_data[4]
-                    dns_servers = profile_data[5]
-                    peers = profile_data[6]
+                            # генерим уникальное имя профиля, если есть конфликт
+                            original_name = profile_name
+                            suffix = 1
+                            while (PROFILES_DIR / profile_name).exists():
+                                profile_name = f"{original_name}_{suffix}"
+                                suffix += 1
 
-                    # генерим уникальное имя профиля, если есть конфликт
-                    original_name = profile_name
-                    suffix = 1
-                    while (PROFILES_DIR / profile_name).exists():
-                        profile_name = f"{original_name}_{suffix}"
-                        suffix += 1
+                            error = self.save_profile(profile_name, ip_address, private_key, interface_name, extra_routes, dns_servers, peers)
+                            if error:
+                                return {"error": error}
 
-                    error = self.save_profile(profile_name, ip_address, private_key, interface_name, extra_routes, dns_servers, peers)
-                    if error:
-                        return {"error": error}
+                            imported_profiles.append(profile_name)
 
-                    imported_profiles.append(profile_name)
+                return {"error": None, "profiles": imported_profiles}
 
-            return {"error": None, "profiles": imported_profiles}
+            else:
+                # обычный одиночный conf
+                profile_data = self.parse_wireguard_conf(path)
+                profile_name = profile_data[0]
+                ip_address = profile_data[1]
+                private_key = profile_data[2]
+                interface_name = profile_data[3]
+                extra_routes = profile_data[4]
+                dns_servers = profile_data[5]
+                peers = profile_data[6]
 
-        else:
-            # обычный одиночный conf
-            profile_data = self.parse_wireguard_conf(path)
-            profile_name = profile_data[0]
-            ip_address = profile_data[1]
-            private_key = profile_data[2]
-            interface_name = profile_data[3]
-            extra_routes = profile_data[4]
-            dns_servers = profile_data[5]
-            peers = profile_data[6]
+                error = self.save_profile(profile_name, ip_address, private_key, interface_name, extra_routes, dns_servers, peers)
+                if error:
+                    return {"error": error}
 
-            error = self.save_profile(profile_name, ip_address, private_key, interface_name, extra_routes, dns_servers, peers)
-            if error:
-                return {"error": error}
-
-            return {"error": None, "profiles": [profile_name]}
+                return {"error": None, "profiles": [profile_name]}
+        except FileNotFoundError:
+            return {"error": "File not found"}
+        except zipfile.BadZipFile:
+            return {"error": "Bad zip file"}
+        except Exception as e:
+            return {"error": str(e)}
 
 
 
@@ -685,6 +703,57 @@ class Vpn:
             return {"error": error}
 
         return {"error": None, "profiles": [profile_name]}
+
+    def get_wireguard_version(self):
+        """
+        Возвращает информацию о версии vendored wireguard-go/wg.
+        """
+        wg_bin = resolve_vendor_binary("wireguard")
+        try:
+            out = subprocess.check_output([str(wg_bin), "--version"], stderr=subprocess.STDOUT, timeout=3)
+            line = out.decode(errors="ignore").strip().splitlines()[0] if out else ""
+        except Exception as e:
+            line = str(e)
+        return {
+            "version": line,
+            "backend": line,
+            "raw": line,
+        }
+
+    def export_confs_zip(self):
+        """
+        Экспортирует все config.ini из профилей в wireguard.zip в загрузки.
+        """
+        downloads = Path("/home/phablet/Downloads")
+        downloads.mkdir(parents=True, exist_ok=True)
+        base = downloads / "wireguard.zip"
+
+        def next_free_name(path):
+            if not path.exists():
+                return path
+            for i in range(1, 1000):
+                cand = path.with_name(f"{path.stem}-{i}{path.suffix}")
+                if not cand.exists():
+                    return cand
+            return path
+
+        target = next_free_name(base)
+        try:
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
+                found = False
+                for cfg in PROFILES_DIR.glob("*/config.ini"):
+                    found = True
+                    name = cfg.parent.name + ".conf"
+                    z.write(cfg, arcname=name)
+                # если config.ini нет, попробуем .conf из импортов
+                for conf in PROFILES_DIR.glob("*.conf"):
+                    found = True
+                    z.write(conf, arcname=conf.name)
+                if not found:
+                    return {"error": "Нет профилей для экспорта"}
+            return {"error": None, "path": str(target)}
+        except Exception as e:
+            return {"error": str(e)}
 
     def decode_qr_image(self, path):
         if path and path.startswith("file://"):

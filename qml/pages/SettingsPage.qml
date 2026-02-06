@@ -6,42 +6,124 @@ import Qt.labs.settings 1.0
 import "../components"
 
 UITK.Page {
+    id: settingsPage
+
     Settings {
         id: settings
         property bool finishedWizard: false
         property bool useUserspace: true
         property bool canUseKmod: false
+        property bool allowExternalControl: false
     }
+
+    property string versionLabel: "WireGuard для Ubuntu Touch"
+    property string backendLabel: ""
+
+    Toast { id: toast }
+
     header: UITK.PageHeader {
         id: header
-        title: i18n.tr("Settings")
+        title: i18n.tr("Настройки")
 
         leadingActionBar.actions: [
             UITK.Action {
                 iconName: "back"
                 onTriggered: {
-                    // In case of useUserspace property changed,
-                    // make sure PickProfilePage gets loaded new, so the settings object gets also refreshed
                     stack.clear()
                     stack.push(Qt.resolvedUrl("PickProfilePage.qml"))
                 }
             }
         ]
     }
-    ListView {
+
+    Flickable {
+        id: flick
         anchors.top: header.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.topMargin: units.gu(2)
-        anchors.leftMargin: units.gu(2)
-        anchors.rightMargin: units.gu(2)
+        anchors.bottom: parent.bottom
+        property int pad: units.gu(2)
+        contentWidth: flick.width
+        contentHeight: contentCol.implicitHeight + pad * 2
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+
         Column {
-            spacing: units.gu(1)
-            anchors.left: parent.left
-            anchors.right: parent.right
+            id: contentCol
+            x: flick.pad
+            y: flick.pad
+            width: flick.width - flick.pad * 2
+            spacing: units.gu(2)
+            clip: false
+
+            Rectangle {
+                width: contentCol.width
+                color: "#1f1f1f"
+                radius: units.gu(1)
+                border.color: "#2b2b2b"
+                border.width: 1
+                property int pad: units.gu(2.4)
+                height: Math.max(cardRow.implicitHeight + pad * 2, units.gu(7))
+                Row {
+                    id: cardRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: parent.pad
+                    anchors.rightMargin: parent.pad
+                    spacing: units.gu(1.2)
+
+                    Image {
+                        source: Qt.resolvedUrl("../../assets/logo.png")
+                        width: units.gu(5)
+                        height: width
+                        fillMode: Image.PreserveAspectFit
+                    }
+                    Column {
+                        spacing: units.gu(0.4)
+                        width: contentCol.width - units.gu(9)
+                        UITK.Label {
+                            id: titleLbl
+                            text: versionLabel
+                            color: "white"
+                            font.pixelSize: units.gu(2.0)
+                            font.bold: true
+                            wrapMode: Text.WordWrap
+                        }
+                        UITK.Label {
+                            id: backendLbl
+                            text: backendLabel
+                            color: "#cccccc"
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+
             SettingsItem {
-                title: i18n.tr("Use slow userspace implementation")
-                description: i18n.tr("It will be buggy, slow and probably crash.")
+                title: i18n.tr("Экспорт туннелей в zip-файл")
+                description: i18n.tr("Zip-файл будет сохранен в папке загрузок")
+                onClicked: {
+                    python.call('vpn.instance.export_confs_zip', [], function(res) {
+                        if (res.error) {
+                            toast.show(i18n.tr("Ошибка экспорта: ") + res.error)
+                        } else {
+                            toast.show(i18n.tr("Сохранено: ") + res.path)
+                        }
+                    })
+                }
+            }
+
+            SettingsItem {
+                title: i18n.tr("Просмотр журналов приложения")
+                description: i18n.tr("Журналы могут помочь при отладке")
+                onClicked: Qt.openUrlExternally("file:///home/phablet/.cache/wireguard.sysadmin/")
+            }
+
+            SettingsItem {
+                title: i18n.tr("Использовать userspace реализацию")
+                description: i18n.tr("Может быть медленнее и менее стабильной")
                 control: UITK.Switch {
                     enabled: settings.canUseKmod
                     checked: settings.useUserspace
@@ -53,15 +135,44 @@ UITK.Page {
                     }
                 }
             }
-            UITK.Button {
-                text: i18n.tr("Try validating the kernel module again")
-                anchors.left: parent.left
-                anchors.right: parent.right
+
+            SettingsItem {
+                title: i18n.tr("Разрешить управление через внешние приложения")
+                description: i18n.tr("Пока не реализовано")
+                control: null
+                descColor: "#ffb400"
+            }
+
+            SettingsItem {
+                title: i18n.tr("Повторно проверить модуль ядра")
+                description: i18n.tr("Запустить мастер проверки ядра и прав sudo")
                 onClicked: {
                     stack.clear()
                     stack.push(Qt.resolvedUrl("WizardPage.qml"))
                 }
             }
+
+            SettingsItem {
+                title: i18n.tr("Исходники и багтрекер")
+                description: i18n.tr("Открыть репозиторий проекта")
+                onClicked: Qt.openUrlExternally("https://github.com/Gloomydemin/Wireguard_qml")
+            }
+
+            Rectangle { height: units.gu(2); width: 1; color: "transparent" }
+        }
+    }
+
+    Python {
+        id: python
+        Component.onCompleted: {
+            addImportPath(Qt.resolvedUrl('../../src/'))
+            importModule('vpn', function () {
+                python.call('vpn.instance.get_wireguard_version', [], function(res) {
+                    var ver = res && res.version ? res.version : ""
+                    versionLabel = "WireGuard для Ubuntu Touch "
+                    backendLabel = res && res.backend ? res.backend : ""
+                })
+            })
         }
     }
 }

@@ -1,5 +1,5 @@
 {
-    "name": "wireguard.davidv.dev",
+    "name": "wireguard.sysadmin",
     "description": "Wireguard VPN",
     "architecture": "@CLICK_ARCH@",
     "title": "Wireguard",
@@ -11,6 +11,6 @@
         }
     },
     "version": "1.0.0",
-    "maintainer": "David Ventura <david@davidv.dev>",
+    "maintainer": "Sysadmin <bytebuddy@yandex.ru>",
     "framework" : "@CLICK_FRAMEWORK@"
 }

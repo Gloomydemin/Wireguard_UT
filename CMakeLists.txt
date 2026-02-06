@@ -12,7 +12,7 @@ execute_process(
 set(QT_IMPORTS_DIR "lib/${ARCH_TRIPLET}")
 
 set(PROJECT_NAME "wireguard")
-set(FULL_PROJECT_NAME "wireguard.davidv.dev")
+set(FULL_PROJECT_NAME "wireguard.sysadmin")
 set(DATA_DIR /)
 set(DESKTOP_FILE_NAME ${PROJECT_NAME}.desktop)
 
@@ -98,4 +98,3 @@ file(GLOB_RECURSE PROJECT_SRC_FILES
 )
 
 add_custom_target(${PROJECT_NAME}_FILES ALL SOURCES ${PROJECT_SRC_FILES})
-

@@ -13,7 +13,7 @@ UITK.MainView {
 
     id: root
     objectName: 'mainView'
-    applicationName: 'wireguard.davidv.dev'
+    applicationName: 'wireguard.sysadmin'
     automaticOrientation: true
     anchorToKeyboard: true
 

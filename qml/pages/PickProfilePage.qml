@@ -174,7 +174,7 @@ Rectangle {
         Rectangle {
             width: units.gu(4)
             height: units.gu(0.5)
-            radius: height / 2
+            radius: height / 0.5
             color: tertiaryTextColor
             opacity: 0.6
             anchors.horizontalCenter: parent.horizontalCenter
@@ -462,27 +462,55 @@ Component {
 
         delegate: UITK.ListItem {
             height: col.height + col.anchors.topMargin + col.anchors.bottomMargin
-            property var status: (c_status && typeof c_status === "object")
-                                 ? c_status
-                                 : ({ "init": false, "peers": [] })
+            function statusObj() {
+                return (c_status && typeof c_status === "object")
+                        ? c_status
+                        : ({ "init": false, "peers": [], "connecting": false })
+            }
+            property var status: statusObj()
             onClicked: {
+                var status = statusObj()
                 if (!status.init) {
+                    // визуально показать, что начали подключение
+                    listmodel.setProperty(index, 'c_status', {
+                                               init: true,
+                                               connecting: true,
+                                               peers: [],
+                                               started: Date.now() / 1000
+                                           })
                     python.call('vpn.instance._connect',
                                 [profile_name, !settings.useUserspace],
                                 function (error_msg) {
                                     if (error_msg) {
+                                        listmodel.setProperty(index, 'c_status', {
+                                                                   init: false,
+                                                                   connecting: false,
+                                                                   peers: []
+                                                               })
                                         toast.show('Failed:' + error_msg)
                                         return
                                     }
+                                    // сразу показать, что соединяемся/соединены; уточним после опроса
+                                    listmodel.setProperty(index, 'c_status', {
+                                                               init: true,
+                                                               connecting: true,
+                                                               peers: [],
+                                                               started: Date.now() / 1000
+                                                           })
                                     toast.show(i18n.tr('Connecting..'))
-                                    populateProfiles(function() {
-                                        showStatus()
-                                    })
+                                    statusKickoff.restart()
+                                    showStatus()
                                 })
                 } else {
                     python.call('vpn.instance.interface.disconnect', [interface_name],
                                 function () {
                                     toast.show(i18n.tr("Disconnected"))
+                                    listmodel.setProperty(index, 'c_status', {
+                                                               init: false,
+                                                               connecting: false,
+                                                               peers: []
+                                                           })
+                                    showStatus()
                                 })
                 }
             }
@@ -553,7 +581,8 @@ Component {
                     }
                     TunnelStatus {
                         id: ts
-                        connected: !!(status && status.peers && status.peers.length > 0)
+                        connected: isConnected(statusObj())
+                        connecting: !!statusObj().connecting
                         size: 2
                     }
                 }
@@ -626,11 +655,18 @@ Component {
     }
 
     Timer {
-    repeat: true
-    interval: 3000
-    running: listmodel.count > 0
-    onTriggered: showStatus()
-}
+        repeat: true
+        interval: 1000
+        running: listmodel.count > 0
+        onTriggered: showStatus()
+    }
+
+    Timer {
+        id: statusKickoff
+        repeat: false
+        interval: 500
+        onTriggered: showStatus()
+    }
 
 
     function normalizePeers(source) {
@@ -690,11 +726,29 @@ Component {
         return Math.round(q, 1) + units[i]
     }
 
+    function isConnected(status) {
+        if (!status || !status.init) return false
+        if (status.connecting) return false
+        const peerList = normalizePeers(status.peers)
+        for (var i = 0; i < peerList.length; i++) {
+            if (peerList[i].up) {
+                return true
+            }
+        }
+        // если нет информации по пирами, но init=true, считаем подключено
+        return peerList.length === 0 ? true : false
+    }
+
     function populateProfiles(onDone) {
         python.call('vpn.instance.list_profiles', [], function (profiles) {
+            // сортировка по имени
+            profiles.sort(function(a, b) {
+                return (a.profile_name || "").toLowerCase().localeCompare((b.profile_name || "").toLowerCase());
+            });
             listmodel.clear()
             for (var i = 0; i < profiles.length; i++) {
                 profiles[i].init = false
+                profiles[i].connecting = false
                 listmodel.append(profiles[i])
             }
             if (onDone) {
@@ -717,9 +771,7 @@ Component {
                         for (var i = 0; i < listmodel.count; i++) {
                             const entry = listmodel.get(i)
 
-                            let status = {
-                                "init": false
-                            }
+                            let status = entry.c_status ? entry.c_status : { init: false, connecting: false, peers: [] }
                             var matched = null
                             if (entry.interface_name && all_status[entry.interface_name]) {
                                 matched = all_status[entry.interface_name]
@@ -732,7 +784,18 @@ Component {
                                     copy[prop] = matched[prop]
                                 }
                                 copy['init'] = true
+                                copy['connecting'] = false
                                 status = copy
+                            } else {
+                                // если долго висим в состоянии connecting без статуса — сбрасываем
+                                if (status.connecting && status.started) {
+                                    var elapsed = (Date.now() / 1000) - status.started
+                                    if (elapsed > 12) {
+                                        status = { init: false, connecting: false, peers: [] }
+                                    }
+                                } else if (!status.connecting) {
+                                    status = { init: false, connecting: false, peers: [] }
+                                }
                             }
                             listmodel.setProperty(i, 'c_status', status)
                         }
@@ -786,22 +849,19 @@ Component {
             addImportPath(Qt.resolvedUrl('../../src/'))
             importModule('vpn', function () {
                 python.call('vpn.instance.set_pwd', [root.pwd], function(result){});
+                // First show UI promptly, then clean up userspace in background
+                populateProfiles(function() {
+                    if (listmodel.count > 0) {
+                        showStatus()
+                    }
+                })
                 if (settings.useUserspace) {
                     python.call('vpn.instance.cleanup_userspace', [], function (err) {
                         if (err) {
                             console.log("cleanup_userspace:", err)
                         }
-                        populateProfiles(function() {
-                            if (listmodel.count > 0) {
-                                showStatus()
-                            }
-                        })
-                    })
-                } else {
-                    populateProfiles(function() {
-                        if (listmodel.count > 0) {
-                            showStatus()
-                        }
+                        // refresh statuses after cleanup (non-blocking)
+                        showStatus()
                     })
                 }
             })

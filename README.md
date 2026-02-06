@@ -1,46 +1,39 @@
-# Wireguard
+# Wireguard for Ubuntu Touch
 
-Wireguard VPN. 
+Fork of the original wireguard_qml adapted and maintained for Ubuntu Touch community devices.
 
-Supports kernel & fallback userspace implementation. The userspace implementation is **alpha quality**. The kernel implementation is very solid.
+## Features
+- Multiple profiles (can run simultaneously)
+- Userspace fallback (wireguard-go) when kernel module unavailable
+- QR/zip/import support for .conf configs
+- Extra routes and DNS per profile
 
-How to use:
+## Building & installing
+Prerequisites: `clickable` 8.6+, Docker available, Ubuntu SDK 20.04 image.
 
-* Add a new profile
-* On the main screen, tap on the profile to connect/disconnect.
+```bash
+clickable build --arch arm64  # for device
+clickable install --arch arm64 --ssh <device-ip>
+```
 
-Features:
-
-* Multiple profiles
-  * they can all be enabled at the same time
-* Userspace fallback
-* Extra routes can be added per-profle
-
-## Screenshots
-![](https://github.com/davidventura/wireguard_qml/blob/master/screenshots/main.png?raw=true)
-![](https://github.com/davidventura/wireguard_qml/blob/master/screenshots/create_profile.png?raw=true)
-
-## Get kernel support for wireguard on your device
-
-It is very easy! You can follow the steps [here](https://www.wireguard.com/compilation/) and send a MR to your maintainer.  
-If you don't feel up to the task, open an issue and fill in the template
-
-### Instructions to build the kernel module
-
-1. Find your kernel sources, probably [here](https://gitlab.com/ubports), and clone them
-2. In the sources, run something like `/usr/bin/make  O=../kernel-out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabihf-  modules_prepare -j$(nproc)`
-3. Clone [wireguard](https://github.com/WireGuard/wireguard-linux-compat) kernel sources
-4. Run `make -C src -j$(nproc) KERNELDIR=<PATH>/kernel-out/ ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabihf- module`
-5. Try to load the resulting `wireguard.ko` on your device: `sudo insmod wireguard.ko`
-
+For emulator (x86_64): `clickable build --arch amd64`.
 
 ## Logs
+Application logs live in `~/.cache/wireguard.sysadmin/` on the device. Open the Settings page and tap “Просмотр журналов приложения” to jump there.
 
-Userspace daemon to update routes is at `~/.cache/wireguard.davidv.dev/daemon-de.log`.  
-Userspace wireguard daemon is at `~/.cache/wireguard.davidv.dev/daemon-de.log/boring.log`.  
+## Kernel module support
+If your device kernel ships WireGuard module, the app will use it. Otherwise it falls back to userspace.
+For adding WireGuard to a UT kernel, follow upstream instructions: https://www.wireguard.com/compilation/
+
+## Export configs
+All profiles can be exported to `/home/phablet/Downloads/wireguard.zip` (auto-increments if the file exists) via Settings → “Экспорт туннелей в zip-файл”.
+
+## Maintainer
+Sysadmin <bytebuddy@yandex.ru>
 
 ## License
+This project is a fork of [Wireguard_qml](https://github.com/DavidVentura/Wireguard_qml) (MIT).  
+Our modifications are also released under the MIT License.
 
-Copyright (C) 2021  David Ventura
-
-Licensed under the MIT license
+Copyright (c) 2026 Sysadmin  
+Copyright (c) 2021 David Ventura

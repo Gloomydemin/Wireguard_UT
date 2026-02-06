@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: wireguard.davidv.dev\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-06 05:52+0000\n"
+"POT-Creation-Date: 2026-02-06 09:23+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -105,19 +105,19 @@ msgstr ""
 msgid "Importing profile..."
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:477
+#: ../qml/pages/PickProfilePage.qml:480
 msgid "Connecting.."
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:485
+#: ../qml/pages/PickProfilePage.qml:488
 msgid "Disconnected"
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:499
+#: ../qml/pages/PickProfilePage.qml:502
 msgid "Failed:"
 msgstr ""
 
-#: ../qml/pages/PickProfilePage.qml:503
+#: ../qml/pages/PickProfilePage.qml:506
 msgid "Profile %1 deleted"
 msgstr ""
 
@@ -205,20 +205,64 @@ msgstr ""
 msgid "QR error: "
 msgstr ""
 
-#: ../qml/pages/SettingsPage.qml:17
-msgid "Settings"
+#: ../qml/pages/SettingsPage.qml:26
+msgid "Настройки"
 msgstr ""
 
-#: ../qml/pages/SettingsPage.qml:43
-msgid "Use slow userspace implementation"
+#: ../qml/pages/SettingsPage.qml:95
+msgid "Экспорт туннелей в zip-файл"
 msgstr ""
 
-#: ../qml/pages/SettingsPage.qml:44
-msgid "It will be buggy, slow and probably crash."
+#: ../qml/pages/SettingsPage.qml:96
+msgid "Zip-файл будет сохранен в папке загрузок"
 msgstr ""
 
-#: ../qml/pages/SettingsPage.qml:57
-msgid "Try validating the kernel module again"
+#: ../qml/pages/SettingsPage.qml:100
+msgid "Ошибка экспорта: "
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:102
+msgid "Сохранено: "
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:109
+msgid "Просмотр журналов приложения"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:110
+msgid "Журналы могут помочь при отладке"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:115
+msgid "Использовать userspace реализацию"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:116
+msgid "Может быть медленнее и менее стабильной"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:130
+msgid "Разрешить управление через внешние приложения"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:131
+msgid "Пока не реализовано"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:136
+msgid "Повторно проверить модуль ядра"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:137
+msgid "Запустить мастер проверки ядра и прав sudo"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:145
+msgid "Исходники и багтрекер"
+msgstr ""
+
+#: ../qml/pages/SettingsPage.qml:146
+msgid "Открыть репозиторий проекта"
 msgstr ""
 
 #: ../qml/pages/WizardPage.qml:66
