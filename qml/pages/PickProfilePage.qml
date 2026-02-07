@@ -23,6 +23,9 @@ UITK.Page {
     property color baseColor: appPalette ? appPalette.normal.base : "#ffffff"
     property color textColor: appPalette ? appPalette.normal.foregroundText : "#111111"
     property color tertiaryTextColor: appPalette ? appPalette.normal.backgroundTertiaryText : "#888888"
+    property string backendLabel: settings.useUserspace
+                                  ? i18n.tr("Backend: userspace (wireguard-go)")
+                                  : i18n.tr("Backend: kernel module")
 
     Settings {
         id: settings
@@ -39,6 +42,39 @@ UITK.Page {
                 }
             }
         ]
+    }
+
+    Rectangle {
+        anchors.top: header.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: units.gu(3.2)
+        color: "transparent"
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: units.gu(2)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: units.gu(0.6)
+            Rectangle {
+                radius: units.gu(1)
+                color: settings.useUserspace ? "#ffd54f" : "#81c784"
+                height: units.gu(2.4)
+                width: implicitWidth
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                    anchors.centerIn: parent
+                    color: "#000000"
+                    font.pixelSize: units.gu(1.4)
+                    text: backendLabel
+                }
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 0
+                anchors.rightMargin: 0
+                anchors.topMargin: 0
+                anchors.bottomMargin: 0
+                anchors.right: undefined
+            }
+        }
     }
 
     // Import page with Content Hub
@@ -458,6 +494,7 @@ Component {
 
     ListView {
         anchors.top: header.bottom
+        anchors.topMargin: units.gu(3.2)
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -666,7 +703,7 @@ Component {
 
     Timer {
         repeat: true
-        interval: 1000
+        interval: hasActiveInterfaces ? 1500 : 5000
         running: listmodel.count > 0
         onTriggered: showStatus()
     }
