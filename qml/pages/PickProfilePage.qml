@@ -18,6 +18,7 @@ UITK.Page {
                                 : ((UITK.Theme && UITK.Theme.palette)
                                    ? UITK.Theme.palette
                                    : null))
+    property bool lastImportWasZip: false
     property color bgColor: appPalette ? appPalette.normal.background : "#f7f7f7"
     property color baseColor: appPalette ? appPalette.normal.base : "#ffffff"
     property color textColor: appPalette ? appPalette.normal.foregroundText : "#111111"
@@ -54,6 +55,7 @@ UITK.Page {
     
     function importConfPath(filePath) {
         console.log("Importing file:", filePath)
+        lastImportWasZip = filePath && filePath.toLowerCase().endsWith(".zip")
         importProgressModal.open()
         python.call('vpn.instance.import_conf', [filePath], function(result) {
             handleImportResult(result)
@@ -61,6 +63,7 @@ UITK.Page {
     }
 
     function importConfText(confText, profileName, interfaceName) {
+        lastImportWasZip = false
         var nameOverride = (profileName && profileName.length > 0) ? profileName : null
         var ifaceOverride = (interfaceName && interfaceName.length > 0) ? interfaceName : null
         importProgressModal.open()
@@ -94,10 +97,17 @@ UITK.Page {
             return
         }
         console.log("Import success:", result)
-        toast.show(i18n.tr("Profile imported successfully"))
+        var count = (result.profiles && result.profiles.length) ? result.profiles.length : 0
+        toast.show(count > 1
+                   ? i18n.tr("Imported %1 profiles").arg(count)
+                   : i18n.tr("Profile imported successfully"))
 
         populateProfiles(function() {
             if (!result.profiles || result.profiles.length === 0) {
+                return
+            }
+            // Для zip или множественного импорта остаёмся на списке
+            if (lastImportWasZip || result.profiles.length !== 1) {
                 return
             }
             const importedName = result.profiles[0]
