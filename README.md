@@ -5,7 +5,7 @@ Fork of the original wireguard_qml adapted and maintained for Ubuntu Touch commu
 [Translations](#translations)
 
 ## Features
-- Multiple profiles (can run simultaneously)
+- Multiple profiles (one active at a time)
 - Userspace fallback (wireguard-go) when kernel module unavailable
 - QR/zip/import support for .conf configs
 - Extra routes and DNS per profile

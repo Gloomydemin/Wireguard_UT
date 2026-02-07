@@ -3,7 +3,7 @@
 Fork du projet d’origine wireguard_qml, adapté et maintenu pour les appareils de la communauté Ubuntu Touch.
 
 ## Fonctionnalités
-- Profils multiples (peuvent fonctionner simultanément)
+- Profils multiples (un seul actif à la fois)
 - Bascule en userspace (wireguard‑go) si le module noyau est indisponible
 - Support QR/ZIP/import pour les configs .conf
 - Routes supplémentaires et DNS par profil
