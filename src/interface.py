@@ -329,6 +329,9 @@ class Interface:
             except subprocess.TimeoutExpired:
                 print('`wg show all dump` timed out')
                 return []
+            except Exception as e:
+                print('`wg show all dump` failed:', e)
+                return []
             if p.returncode != 0:
                 print('Failed to run `wg show all dump`:')
                 print(p.stdout.decode(errors='ignore').strip())

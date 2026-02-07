@@ -23,7 +23,10 @@ UITK.Page {
     property color baseColor: appPalette ? appPalette.normal.base : "#ffffff"
     property color textColor: appPalette ? appPalette.normal.foregroundText : "#111111"
     property color tertiaryTextColor: appPalette ? appPalette.normal.backgroundTertiaryText : "#888888"
-    property string backendLabel: settings.useUserspace
+    property bool useUserspaceEffective: (typeof root !== "undefined" && root.settings)
+                                         ? root.settings.useUserspace
+                                         : settings.useUserspace
+    property string backendLabel: useUserspaceEffective
                                   ? i18n.tr("Backend: userspace (wireguard-go)")
                                   : i18n.tr("Backend: kernel module")
 
@@ -511,6 +514,9 @@ Component {
             }
             property var status: statusObj()
             onClicked: {
+                if (!listmodel || index < 0) {
+                    return
+                }
                 var status = statusObj()
                 if (!status.init) {
                     // визуально показать, что начали подключение
@@ -784,6 +790,9 @@ Component {
     function populateProfiles(onDone) {
         python.call('vpn.instance.list_profiles', [], function (profiles) {
             // сортировка по имени
+            if (!profiles || !profiles.sort) {
+                profiles = []
+            }
             profiles.sort(function(a, b) {
                 return (a.profile_name || "").toLowerCase().localeCompare((b.profile_name || "").toLowerCase());
             });
@@ -801,6 +810,7 @@ Component {
     function showStatus() {
         python.call('vpn.instance.interface.current_status_by_interface', [],
                     function (all_status) {
+                        all_status = all_status || {}
                         hasActiveInterfaces = Object.keys(all_status).length > 0
                         const keys = Object.keys(all_status)
                         var byPriv = {}
