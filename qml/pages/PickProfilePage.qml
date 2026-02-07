@@ -59,20 +59,15 @@ UITK.Page {
                 radius: units.gu(1)
                 color: settings.useUserspace ? "#ffd54f" : "#81c784"
                 height: units.gu(2.4)
-                width: implicitWidth
+                width: text.implicitWidth + units.gu(2.4)
                 anchors.verticalCenter: parent.verticalCenter
                 Text {
+                    id: text
                     anchors.centerIn: parent
                     color: "#000000"
                     font.pixelSize: units.gu(1.4)
                     text: backendLabel
                 }
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 0
-                anchors.rightMargin: 0
-                anchors.topMargin: 0
-                anchors.bottomMargin: 0
-                anchors.right: undefined
             }
         }
     }

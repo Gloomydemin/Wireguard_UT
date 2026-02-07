@@ -183,8 +183,7 @@ class Interface:
         # 6. AllowedIPs
         add_default = False
         for peer in profile.get('peers', []):
-            prefixes = re.split(r'[, 	
-]+', peer.get('allowed_prefixes', ''))
+            prefixes = re.split(r'[, \t\r\n]+', peer.get('allowed_prefixes', ''))
             for prefix in prefixes:
                 prefix = prefix.strip()
                 if not prefix:
