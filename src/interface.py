@@ -3,6 +3,7 @@ import subprocess
 import os
 import socket
 import json
+import re
 
 from pathlib import Path
 
@@ -146,7 +147,18 @@ class Interface:
             return err
 
         # 3. address
-        sudo_run(['ip', 'address', 'replace', profile['ip_address'], 'dev', interface_name])
+        ip_raw = profile.get('ip_address', '').strip()
+        if not ip_raw:
+            err = f'No IP address configured for {profile.get("name", interface_name)}'
+            log.error(err)
+            return err
+
+        addr_list = [a for a in re.split(r'[\\s,]+', ip_raw) if a]
+
+        # Replace the first address, add the rest (so multi-IP configs work)
+        sudo_run(['ip', 'address', 'replace', addr_list[0], 'dev', interface_name])
+        for extra_addr in addr_list[1:]:
+            sudo_run(['ip', 'address', 'add', extra_addr, 'dev', interface_name], check=False)
 
         # 4. interface up
         sudo_run(['ip', 'link', 'set', 'up', 'dev', interface_name])
