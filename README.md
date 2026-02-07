@@ -2,6 +2,8 @@
 
 Fork of the original wireguard_qml adapted and maintained for Ubuntu Touch community devices.
 
+[Translations](#translations)
+
 ## Features
 - Multiple profiles (can run simultaneously)
 - Userspace fallback (wireguard-go) when kernel module unavailable
@@ -37,3 +39,9 @@ Our modifications are also released under the MIT License.
 
 Copyright (c) 2026 Sysadmin  
 Copyright (c) 2021 David Ventura
+
+## Translations
+- Deutsch: [README.de.md](README.de.md)
+- Français: [README.fr.md](README.fr.md)
+- Nederlands: [README.nl.md](README.nl.md)
+- Русский: [README.ru.md](README.ru.md)

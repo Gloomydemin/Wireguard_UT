@@ -103,10 +103,6 @@ msgstr "Заполнить параметры вручную"
 msgid "Enter a name for the imported profile"
 msgstr "Введите имя для импортируемого профиля"
 
-#: ../qml/pages/PickProfilePage.qml:526 ../qml/pages/PickProfilePage.qml:534
-msgid "Cancel"
-msgstr "Отмена"
-
 #: ../qml/pages/PickProfilePage.qml:540
 msgid "Save"
 msgstr "Сохранить"
