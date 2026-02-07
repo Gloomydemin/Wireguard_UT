@@ -141,13 +141,6 @@ UITK.Page {
             }
 
             SettingsItem {
-                title: i18n.tr("Allow control via external apps")
-                description: i18n.tr("Not implemented yet")
-                control: null
-                descColor: "#ffb400"
-            }
-
-            SettingsItem {
                 title: i18n.tr("Re-check kernel module")
                 description: i18n.tr("Run kernel and sudo check wizard")
                 onClicked: {

@@ -457,8 +457,25 @@ Component {
         }
     }
 
-    ListView {
+    Item {
+        id: backendBar
         anchors.top: header.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: units.gu(3)
+
+        UITK.Label {
+            anchors.left: parent.left
+            anchors.leftMargin: units.gu(2)
+            anchors.verticalCenter: parent.verticalCenter
+            color: tertiaryTextColor
+            font.pixelSize: units.gu(1.4)
+            text: i18n.tr("Backend: ") + (settings.useUserspace ? i18n.tr("Userspace") : i18n.tr("Kernel"))
+        }
+    }
+
+    ListView {
+        anchors.top: backendBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
