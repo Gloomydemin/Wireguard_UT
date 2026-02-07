@@ -746,17 +746,58 @@ class Vpn:
         try:
             with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
                 found = False
-                for cfg in PROFILES_DIR.glob("*/config.ini"):
+                missing = []
+                for profile_json in PROFILES_DIR.glob("*/profile.json"):
+                    try:
+                        data = json.loads(profile_json.read_text())
+                    except Exception:
+                        continue
+
+                    raw_name = data.get("profile_name") or profile_json.parent.name
+                    safe_name = self._sanitize_profile_name(raw_name, profile_json.parent.name)
+                    ip_address = (data.get("ip_address") or "").strip()
+                    if not ip_address:
+                        missing.append(safe_name)
+                        continue
+
+                    lines = [
+                        "[Interface]",
+                        f"#Profile = {raw_name}",
+                        f"Address = {ip_address}",
+                        f"PrivateKey = {data.get('private_key', '').strip()}",
+                    ]
+                    dns = (data.get("dns_servers") or "").strip()
+                    if dns:
+                        lines.append(f"DNS = {dns}")
+                    lines.append("")
+
+                    for peer in data.get("peers", []):
+                        lines.extend([
+                            "[Peer]",
+                            f"#Name = {peer.get('name', '').strip()}",
+                            f"PublicKey = {peer.get('key', '').strip()}",
+                            f"AllowedIPs = {peer.get('allowed_prefixes', '').strip()}",
+                            f"Endpoint = {peer.get('endpoint', '').strip()}",
+                        ])
+                        preshared = (peer.get("presharedKey") or "").strip()
+                        if preshared:
+                            lines.append(f"PresharedKey = {preshared}")
+                        lines.append("PersistentKeepalive = 5")
+                        lines.append("")
+
+                    z.writestr(f"{safe_name}.conf", "\n".join(lines).strip() + "\n")
                     found = True
-                    name = cfg.parent.name + ".conf"
-                    z.write(cfg, arcname=name)
-                # if config.ini is missing, fall back to imported .conf
-                for conf in PROFILES_DIR.glob("*.conf"):
-                    found = True
-                    z.write(conf, arcname=conf.name)
+
                 if not found:
                     return {"error": "No profiles to export"}
-            return {"error": None, "path": str(target)}
+
+            res = {"error": None, "path": str(target)}
+            if missing:
+                preview = ", ".join(missing[:5])
+                if len(missing) > 5:
+                    preview = f"{preview} (+{len(missing)-5} more)"
+                res["warning"] = f"Skipped {len(missing)} profiles missing Address: {preview}"
+            return res
         except Exception as e:
             return {"error": str(e)}
 

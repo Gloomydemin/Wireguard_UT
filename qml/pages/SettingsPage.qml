@@ -109,7 +109,11 @@ UITK.Page {
                         if (res.error) {
                             toast.show(i18n.tr("Export error: ") + res.error)
                         } else {
-                            toast.show(i18n.tr("Saved: ") + res.path)
+                            if (res.warning) {
+                                toast.show(i18n.tr("Saved: ") + res.path + " (" + res.warning + ")")
+                            } else {
+                                toast.show(i18n.tr("Saved: ") + res.path)
+                            }
                         }
                     })
                 }
