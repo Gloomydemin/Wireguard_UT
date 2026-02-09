@@ -490,12 +490,21 @@ class Vpn:
         if '/' in profile_name:
             return '"/" is not allowed in profile names'
 
-        if len(private_key) != 44:
-            return 'Peer key must be exactly 44 bytes long'
+        private_key = (private_key or "").strip()
+        existing_profiles = self._load_profiles()
+        use_existing_key = False
+        if not private_key:
+            if profile_name in existing_profiles and secrets_store.secret_exists(profile_name):
+                use_existing_key = True
+            else:
+                return 'Private key is required'
+        else:
+            if len(private_key) != 44:
+                return 'Peer key must be exactly 44 bytes long'
 
-        _pub = self.genpubkey(private_key)
-        if len(_pub) != 44:
-            return 'Bad private key: ' + _pub
+            _pub = self.genpubkey(private_key)
+            if len(_pub) != 44:
+                return 'Bad private key: ' + _pub
 
         def _split_csv(val):
             return [x.strip() for x in str(val or "").split(",") if x.strip()]
@@ -510,10 +519,10 @@ class Vpn:
         except Exception as e:
             return 'Bad ip address {}: {}'.format(addr, e)
 
-        try:
-            base64.b64decode(private_key)
-        except Exception as e:
-            return 'Bad private key'
+            try:
+                base64.b64decode(private_key)
+            except Exception as e:
+                return 'Bad private key'
 
         for peer in peers:
             if not peer['name']:
@@ -557,7 +566,6 @@ class Vpn:
                 except Exception as e:
                     return 'Bad dns ' + dns + ': ' + str(e)
 
-        existing_profiles = self._load_profiles()
         used = set()
         for name, data in existing_profiles.items():
             if name == profile_name:
@@ -567,11 +575,12 @@ class Vpn:
                 used.add(iface)
 
         interface_name = self._unique_interface_name(interface_name or f"wg_{profile_name}", used)
-        if not self._sudo_pwd:
-            return "Password is required to store private key"
-        ok, err = secrets_store.set_private_key(profile_name, private_key, self._sudo_pwd)
-        if not ok:
-            return f"Secret storage error: {err}"
+        if not use_existing_key:
+            if not self._sudo_pwd:
+                return "Password is required to store private key"
+            ok, err = secrets_store.set_private_key(profile_name, private_key, self._sudo_pwd)
+            if not ok:
+                return f"Secret storage error: {err}"
 
         profile = {'peers': peers,
                    'ip_address': ip_address,

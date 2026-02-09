@@ -85,7 +85,7 @@ UITK.Page {
                                 const pubkey = python.call_sync(
                                                  'vpn.instance.genpubkey', [privateKey])
                                 UITK.Clipboard.push(pubkey)
-                                toast.show('Public key copied to clipboard')
+                                toast.show(i18n.tr("Public key copied to clipboard"))
                             }
                         }
                     }
@@ -246,7 +246,7 @@ UITK.Page {
                 anchors.leftMargin: units.gu(2)
                 anchors.rightMargin: units.gu(2)
                 enabled: listmodel.count && profileName && ipAddress
-                         && privateKey
+                         && (privateKey || isEditing)
                 onClicked: {
                     errorMsg = ''
                     let _peers = []

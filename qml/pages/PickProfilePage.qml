@@ -390,6 +390,9 @@ Component {
                 text: i18n.tr("Save")
                 color: UITK.LomiriColors.green
                 onClicked: {
+                    // Commit any active IME composition before reading text.
+                    Qt.inputMethod.commit()
+                    qrProfileField.focus = false
                     var name = qrProfileField.text.trim()
                     if (!name || name.length === 0) {
                         toast.show(i18n.tr("Please enter a profile name"))
@@ -529,7 +532,7 @@ Component {
                                                                    connecting: false,
                                                                    peers: []
                                                                })
-                                        toast.show('Failed:' + error_msg)
+                                        toast.show(i18n.tr("Failed:") + " " + error_msg)
                                         return
                                     }
                                     // сразу показать, что соединяемся/соединены; уточним после опроса
@@ -566,7 +569,7 @@ Component {
                                         function (error) {
                                             if (error) {
                                                 console.log(error)
-                                                toast.show(i18n.tr('Failed:') + error)
+                                                toast.show(i18n.tr('Failed:') + " " + error)
                                             }
                                             else
                                             {

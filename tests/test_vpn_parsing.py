@@ -1,6 +1,8 @@
 import base64
 import importlib
 
+import secrets_store
+
 
 def _vpn_module():
     import vpn
@@ -50,3 +52,45 @@ def test_sanitize_interface_name():
     v = vpn.Vpn()
     assert v._sanitize_interface_name("test") == "wg_test"
     assert v._sanitize_interface_name("wg0") == "wg0"
+
+
+def test_save_profile_keeps_existing_private_key():
+    vpn = _vpn_module()
+    v = vpn.Vpn()
+    v._sudo_pwd = "pw"
+    profile_name = "existing"
+    v._write_profile(
+        profile_name,
+        {
+            "profile_name": profile_name,
+            "ip_address": "10.0.0.2/32",
+            "dns_servers": "",
+            "extra_routes": "",
+            "pre_up": "",
+            "interface_name": "wg_existing",
+            "peers": [],
+        },
+    )
+    ok, err = secrets_store.set_private_key(profile_name, "privkeydata", "pw")
+    assert ok, err
+    peer_key = base64.b64encode(b"\x00" * 32).decode("ascii")
+    peers = [
+        {
+            "name": "peer1",
+            "key": peer_key,
+            "allowed_prefixes": "0.0.0.0/0",
+            "endpoint": "vpn.example.com:51820",
+            "presharedKey": "",
+        }
+    ]
+    err = v.save_profile(
+        profile_name,
+        "10.0.0.2/32",
+        "",
+        "wg_existing",
+        "",
+        "",
+        "",
+        peers,
+    )
+    assert err is None

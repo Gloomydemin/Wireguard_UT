@@ -338,6 +338,18 @@ msgstr ""
 msgid "Python error: %1"
 msgstr ""
 
+#: ../qml/pages/WizardPage.qml:15
+msgid "Wireguard Wizard"
+msgstr "Мастер WireGuard"
+
+#: ../qml/pages/ProfilePage.qml:88
+msgid "Public key copied to clipboard"
+msgstr "Публичный ключ скопирован в буфер обмена"
+
+#: ../qml/pages/WizardPage.qml:162
+msgid "Unknown error"
+msgstr "Неизвестная ошибка"
+
 #~ msgid "Allow control via external apps"
 #~ msgstr "Разрешить управление через внешние приложения"
 

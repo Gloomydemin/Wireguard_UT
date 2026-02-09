@@ -339,6 +339,18 @@ msgstr ""
 msgid "Python error: %1"
 msgstr ""
 
+#: ../qml/pages/WizardPage.qml:15
+msgid "Wireguard Wizard"
+msgstr "Wireguard-Assistent"
+
+#: ../qml/pages/ProfilePage.qml:88
+msgid "Public key copied to clipboard"
+msgstr "Öffentlicher Schlüssel in die Zwischenablage kopiert"
+
+#: ../qml/pages/WizardPage.qml:162
+msgid "Unknown error"
+msgstr "Unbekannter Fehler"
+
 #~ msgid "Use slow userspace implementation"
 #~ msgstr "Verwende die langsame Userspace Implementierung"
 

@@ -316,6 +316,18 @@ msgstr ""
 msgid "Python error: %1"
 msgstr ""
 
+#: ../qml/pages/WizardPage.qml:15
+msgid "Wireguard Wizard"
+msgstr "Wireguard-assistent"
+
+#: ../qml/pages/ProfilePage.qml:88
+msgid "Public key copied to clipboard"
+msgstr "Publieke sleutel gekopieerd naar klembord"
+
+#: ../qml/pages/WizardPage.qml:162
+msgid "Unknown error"
+msgstr "Onbekende fout"
+
 #: ../qml/pages/WizardPage.qml:85
 msgid ""
 "Kernel module is <b>not usable</b>.<br/>Will fall back to the slow, buggy, "

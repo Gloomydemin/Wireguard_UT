@@ -12,7 +12,7 @@ UITK.Page {
     property string errorMsg: ""
     header: UITK.PageHeader {
         id: header
-        title: "Wireguard Wizard"
+        title: i18n.tr("Wireguard Wizard")
     }
     UITK.ActivityIndicator {
         anchors.centerIn: parent
@@ -159,7 +159,7 @@ for an example change to the kernel.")
             return
         }
         console.error("Python error:", traceback)
-        errorMsg = traceback ? traceback.toString() : "Unknown error"
+        errorMsg = traceback ? traceback.toString() : i18n.tr("Unknown error")
         settings.canUseKmod = false
         settings.useUserspace = true
         if (typeof root !== "undefined" && root.settings) {
