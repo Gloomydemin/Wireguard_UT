@@ -29,6 +29,9 @@ UITK.Page {
         id: settings
         property bool useUserspace: true
     }
+    property bool useUserspace: (typeof root !== "undefined" && root.settings)
+                               ? root.settings.useUserspace
+                               : settings.useUserspace
     header: UITK.PageHeader {
         id: header
         title: i18n.tr("Wireguard")
@@ -470,7 +473,7 @@ Component {
             anchors.verticalCenter: parent.verticalCenter
             color: tertiaryTextColor
             font.pixelSize: units.gu(1.4)
-            text: i18n.tr("Backend: ") + (settings.useUserspace ? i18n.tr("Userspace") : i18n.tr("Kernel"))
+            text: i18n.tr("Backend: ") + (useUserspace ? i18n.tr("Userspace") : i18n.tr("Kernel"))
         }
     }
 
@@ -507,7 +510,7 @@ Component {
                                                started: Date.now() / 1000
                                            })
                     python.call('vpn.instance._connect',
-                                [profile_name, !settings.useUserspace],
+                                [profile_name, !useUserspace],
                                 function (error_msg) {
                                     if (error_msg) {
                                         listmodel.setProperty(index, 'c_status', {
@@ -893,7 +896,7 @@ Component {
                         showStatus()
                     }
                 })
-                if (settings.useUserspace) {
+                if (useUserspace) {
                     python.call('vpn.instance.cleanup_userspace', [], function (err) {
                         if (err) {
                             console.log("cleanup_userspace:", err)

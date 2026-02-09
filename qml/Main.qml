@@ -10,6 +10,7 @@ import "./components"
 
 UITK.MainView {
     property string pwd
+    property alias settings: settings
 
     id: root
     objectName: 'mainView'
@@ -24,6 +25,7 @@ UITK.MainView {
         id: settings
         property bool finishedWizard: false
         property bool useUserspace: true
+        property bool canUseKmod: false
     }
 
     Toast {

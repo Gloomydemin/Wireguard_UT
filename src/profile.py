@@ -1,5 +1,7 @@
+import os
 from pathlib import Path
 
 APP_ID = 'wireguard.sysadmin'
-CONFIG_DIR = Path(f'/home/phablet/.local/share/{APP_ID}')
+APP_HOME = Path(os.environ.get("WIREGUARD_APP_HOME", "/home/phablet"))
+CONFIG_DIR = APP_HOME / ".local" / "share" / APP_ID
 PROFILES_DIR = CONFIG_DIR / 'profiles'

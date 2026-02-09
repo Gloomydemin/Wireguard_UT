@@ -1,12 +1,8 @@
 import subprocess
-import time
 import os
 import shutil
 import base64
 import json
-import textwrap
-import socket
-import configparser
 import zipfile
 import tempfile
 import re
@@ -15,6 +11,8 @@ import urllib.parse
 
 import interface
 import daemon
+import secrets_store
+from wg_config import build_config
 
 from ipaddress import ip_network
 from pathlib import Path
@@ -24,14 +22,20 @@ from vendor_paths import resolve_vendor_binary
 WG_PATH = resolve_vendor_binary("wg")
 
 APP_ID = 'wireguard.sysadmin'
-CONFIG_DIR = Path(f'/home/phablet/.local/share/{APP_ID}')
+APP_HOME = Path(os.environ.get("WIREGUARD_APP_HOME", "/home/phablet"))
+CONFIG_DIR = APP_HOME / ".local" / "share" / APP_ID
 PROFILES_DIR = CONFIG_DIR / 'profiles'
 
-LOG_DIR = Path(f'/home/phablet/.cache/{APP_ID}')
+LOG_DIR = APP_HOME / ".cache" / APP_ID
 
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+for _path in (CONFIG_DIR, PROFILES_DIR, LOG_DIR):
+    try:
+        os.chmod(_path, 0o700)
+    except Exception:
+        pass
 
 _ZBAR_LIB = None
 _GDK_LIB = None
@@ -176,29 +180,31 @@ class Vpn:
     def set_pwd(self, sudo_pwd):
         self._sudo_pwd = sudo_pwd
         self.interface = interface.Interface(sudo_pwd)
+    
+    def _sudo_cmd(self):
+        if self._sudo_pwd:
+            return ['/usr/bin/sudo', '-S']
+        return ['/usr/bin/sudo', '-n']
 
-    def serve_sudo_pwd(self):
-        return subprocess.Popen(['echo', self._sudo_pwd], stdout=subprocess.PIPE)
+    def _sudo_input(self):
+        if not self._sudo_pwd:
+            return None
+        return (self._sudo_pwd + '\n').encode()
 
     def can_use_kernel_module(self):
         if not Path('/usr/bin/sudo').exists():
             return False
-        if not self._sudo_pwd:
-            return False
         try:
-            serve_pwd = self.serve_sudo_pwd()
-            subprocess.run(['/usr/bin/sudo', '-S', 'ip', 'link', 'del', 'test_wg0', 'type', 'wireguard'],
-                           stdin=serve_pwd.stdout,
+            subprocess.run(self._sudo_cmd() + ['ip', 'link', 'del', 'test_wg0', 'type', 'wireguard'],
+                           input=self._sudo_input(),
                            check=False,
                            timeout=3)
-            serve_pwd = self.serve_sudo_pwd()
-            subprocess.run(['/usr/bin/sudo', '-S', 'ip', 'link', 'add', 'test_wg0', 'type', 'wireguard'],
-                           stdin=serve_pwd.stdout,
+            subprocess.run(self._sudo_cmd() + ['ip', 'link', 'add', 'test_wg0', 'type', 'wireguard'],
+                           input=self._sudo_input(),
                            check=True,
                            timeout=3)
-            serve_pwd = self.serve_sudo_pwd()
-            subprocess.run(['/usr/bin/sudo', '-S', 'ip', 'link', 'del', 'test_wg0', 'type', 'wireguard'],
-                           stdin=serve_pwd.stdout,
+            subprocess.run(self._sudo_cmd() + ['ip', 'link', 'del', 'test_wg0', 'type', 'wireguard'],
+                           input=self._sudo_input(),
                            check=False,
                            timeout=3)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
@@ -247,14 +253,110 @@ class Vpn:
                 profiles[path.parent.name] = json.loads(path.read_text())
             except Exception:
                 continue
+            self._migrate_profile_secret(path.parent.name, profiles[path.parent.name])
         return profiles
 
     def _write_profile(self, profile_name, profile):
         profile_dir = PROFILES_DIR / profile_name
         profile_dir.mkdir(exist_ok=True, parents=True)
         profile_file = profile_dir / 'profile.json'
+        data = dict(profile)
+        data.pop("private_key", None)
         with profile_file.open('w') as fd:
-            json.dump(profile, fd, indent=4, sort_keys=True)
+            json.dump(data, fd, indent=4, sort_keys=True)
+        try:
+            os.chmod(profile_dir, 0o700)
+        except Exception:
+            pass
+        try:
+            os.chmod(profile_file, 0o600)
+        except Exception:
+            pass
+
+    def _migrate_profile_secret(self, profile_name, data):
+        if not data:
+            return
+        if secrets_store.secret_exists(profile_name):
+            return
+        if not self._sudo_pwd:
+            return
+        priv = data.get("private_key")
+        if not priv:
+            key_file = PROFILES_DIR / profile_name / "privkey"
+            if key_file.exists():
+                try:
+                    priv = key_file.read_text().strip()
+                except Exception:
+                    priv = None
+        if not priv:
+            return
+        ok, err = secrets_store.set_private_key(profile_name, priv, self._sudo_pwd)
+        if not ok:
+            return
+        if "private_key" in data:
+            data.pop("private_key", None)
+            self._write_profile(profile_name, data)
+        try:
+            key_file = PROFILES_DIR / profile_name / "privkey"
+            if key_file.exists():
+                key_file.unlink()
+        except Exception:
+            pass
+        try:
+            cfg = PROFILES_DIR / profile_name / "config.ini"
+            if cfg.exists():
+                cfg.unlink()
+        except Exception:
+            pass
+
+    def _get_private_key_status(self, profile_name, data=None):
+        key, err = secrets_store.get_private_key(profile_name, self._sudo_pwd, return_error=True)
+        if key:
+            return key, None
+
+        if secrets_store.secret_exists(profile_name):
+            return None, err or "UNREADABLE"
+
+        if data:
+            self._migrate_profile_secret(profile_name, data)
+            key, err = secrets_store.get_private_key(profile_name, self._sudo_pwd, return_error=True)
+            if key:
+                return key, None
+
+            legacy = data.get("private_key")
+            if legacy:
+                if not self._sudo_pwd:
+                    return None, "NO_PASSWORD"
+                ok, err2 = secrets_store.set_private_key(profile_name, legacy, self._sudo_pwd)
+                if ok:
+                    data.pop("private_key", None)
+                    self._write_profile(profile_name, data)
+                    return legacy, None
+                return None, "STORE_FAILED"
+
+        key_file = PROFILES_DIR / profile_name / "privkey"
+        if key_file.exists():
+            try:
+                legacy = key_file.read_text().strip()
+            except Exception:
+                legacy = None
+            if legacy:
+                if not self._sudo_pwd:
+                    return None, "NO_PASSWORD"
+                ok, err2 = secrets_store.set_private_key(profile_name, legacy, self._sudo_pwd)
+                if ok:
+                    try:
+                        key_file.unlink()
+                    except Exception:
+                        pass
+                    return legacy, None
+                return None, "STORE_FAILED"
+
+        return None, err or "MISSING"
+
+    def _get_private_key(self, profile_name, data=None):
+        key, _ = self._get_private_key_status(profile_name, data)
+        return key
 
     def _sanitize_interface_name(self, name):
         if not name:
@@ -321,7 +423,18 @@ class Vpn:
     def _connect(self, profile_name,  use_kmod):
         try:
             self._require_interface()
-            profile = self._ensure_unique_interface_name(profile_name, self.get_profile(profile_name))
+            profile = self.get_profile(profile_name)
+            key, err = self._get_private_key_status(profile_name, profile)
+            if not key:
+                if err == "BAD_PASSWORD":
+                    return "Wrong password. Re-open the app and enter the correct password or re-encrypt keys in Settings."
+                if err == "NO_PASSWORD":
+                    return "Password is required to decrypt private keys."
+                if err == "STORE_FAILED":
+                    return "Failed to store private key."
+                return "Private key not available."
+            profile["private_key"] = key
+            profile = self._ensure_unique_interface_name(profile_name, profile)
             self._disconnect_other_interfaces(profile.get('interface_name'))
             return self.interface._connect(profile, PROFILES_DIR / profile_name / 'config.ini', use_kmod)
         except Exception as e:
@@ -448,53 +561,27 @@ class Vpn:
                 used.add(iface)
 
         interface_name = self._unique_interface_name(interface_name or f"wg_{profile_name}", used)
-
-        PROFILE_DIR = PROFILES_DIR / profile_name
-        PROFILE_DIR.mkdir(exist_ok=True, parents=True)
-
-        PRIV_KEY_PATH = PROFILE_DIR / 'privkey'
-        PROFILE_FILE = PROFILE_DIR / 'profile.json'
-        CONFIG_FILE = PROFILE_DIR / 'config.ini'
-
-        with PRIV_KEY_PATH.open('w') as fd:
-            fd.write(private_key)
+        if not self._sudo_pwd:
+            return "Password is required to store private key"
+        ok, err = secrets_store.set_private_key(profile_name, private_key, self._sudo_pwd)
+        if not ok:
+            return f"Secret storage error: {err}"
 
         profile = {'peers': peers,
                    'ip_address': ip_address,
                    'dns_servers': dns_servers,
                    'extra_routes': extra_routes,
                    'profile_name': profile_name,
-                   'private_key': private_key,
                    'interface_name': interface_name,
                    }
         self._write_profile(profile_name, profile)
-
-        with CONFIG_FILE.open('w') as fd:
-            fd.write(textwrap.dedent('''
-            [Interface]
-            #Profile = {profile_name}
-            PrivateKey = {private_key}
-            ''').format_map(profile))
-            for peer in peers:
-                if len(peer['presharedKey']) > 0:
-                    fd.write(textwrap.dedent('''
-                    [Peer]
-                    #Name = {name}
-                    PublicKey = {key}
-                    AllowedIPs = {allowed_prefixes}
-                    Endpoint = {endpoint}
-                    PresharedKey = {presharedKey}
-                    PersistentKeepalive = 5
-                    '''.format_map(peer)))
-                else:
-                    fd.write(textwrap.dedent('''
-                    [Peer]
-                    #Name = {name}
-                    PublicKey = {key}
-                    AllowedIPs = {allowed_prefixes}
-                    Endpoint = {endpoint}
-                    PersistentKeepalive = 5
-                    '''.format_map(peer)))
+        for legacy in ("privkey", "config.ini"):
+            try:
+                legacy_path = (PROFILES_DIR / profile_name / legacy)
+                if legacy_path.exists():
+                    legacy_path.unlink()
+            except Exception:
+                pass
 
     def import_conf(self, path):
         imported_profiles = []
@@ -731,9 +818,9 @@ class Vpn:
 
     def export_confs_zip(self):
         """
-        Export all config.ini from profiles into wireguard.zip in Downloads.
+        Export all profiles into wireguard.zip in Downloads.
         """
-        downloads = Path("/home/phablet/Downloads")
+        downloads = APP_HOME / "Downloads"
         downloads.mkdir(parents=True, exist_ok=True)
         base = downloads / "wireguard.zip"
 
@@ -751,6 +838,8 @@ class Vpn:
             with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
                 found = False
                 missing = []
+                missing_keys = []
+                bad_password = []
                 for profile_json in PROFILES_DIR.glob("*/profile.json"):
                     try:
                         data = json.loads(profile_json.read_text())
@@ -763,12 +852,19 @@ class Vpn:
                     if not ip_address:
                         missing.append(safe_name)
                         continue
+                    privkey, err = self._get_private_key_status(profile_json.parent.name, data)
+                    if not privkey:
+                        if err == "BAD_PASSWORD":
+                            bad_password.append(safe_name)
+                        else:
+                            missing_keys.append(safe_name)
+                        continue
 
                     lines = [
                         "[Interface]",
                         f"#Profile = {raw_name}",
                         f"Address = {ip_address}",
-                        f"PrivateKey = {data.get('private_key', '').strip()}",
+                        f"PrivateKey = {privkey.strip()}",
                     ]
                     dns = (data.get("dns_servers") or "").strip()
                     if dns:
@@ -801,6 +897,24 @@ class Vpn:
                 if len(missing) > 5:
                     preview = f"{preview} (+{len(missing)-5} more)"
                 res["warning"] = f"Skipped {len(missing)} profiles missing Address: {preview}"
+            if missing_keys:
+                preview = ", ".join(missing_keys[:5])
+                if len(missing_keys) > 5:
+                    preview = f"{preview} (+{len(missing_keys)-5} more)"
+                warn = f"Skipped {len(missing_keys)} profiles missing private key: {preview}"
+                if "warning" in res:
+                    res["warning"] = res["warning"] + "; " + warn
+                else:
+                    res["warning"] = warn
+            if bad_password:
+                preview = ", ".join(bad_password[:5])
+                if len(bad_password) > 5:
+                    preview = f"{preview} (+{len(bad_password)-5} more)"
+                warn = f"Skipped {len(bad_password)} profiles (wrong password): {preview}"
+                if "warning" in res:
+                    res["warning"] = res["warning"] + "; " + warn
+                else:
+                    res["warning"] = warn
             return res
         except Exception as e:
             return {"error": str(e)}
@@ -814,6 +928,18 @@ class Vpn:
         if not text:
             return {"error": "NO_QR"}
         return {"error": None, "text": text}
+
+    def delete_temp_file(self, path):
+        if not path:
+            return {"error": None}
+        try:
+            if path.startswith("file://"):
+                path = path[7:]
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            return {"error": str(e)}
+        return {"error": None}
 
     def find_barcode_reader_app_id(self):
         search_dirs = [
@@ -892,14 +1018,73 @@ class Vpn:
         PROFILE_DIR = PROFILES_DIR / profile
         print(PROFILE_DIR)
         try:
+            secrets_store.delete_private_key(profile)
+        except Exception:
+            pass
+        try:
             shutil.rmtree(PROFILE_DIR.as_posix())
         except OSError as e:
             return f'Error: {PROFILE_DIR}: {e.strerror}'
+
+    def rekey_secrets(self, old_pwd, new_pwd):
+        if not old_pwd or not new_pwd:
+            return "Old and new passwords are required"
+        failures = []
+        for profile_json in PROFILES_DIR.glob("*/profile.json"):
+            profile_name = profile_json.parent.name
+            try:
+                data = json.loads(profile_json.read_text())
+            except Exception:
+                data = {}
+
+            key, err = secrets_store.get_private_key(profile_name, old_pwd, return_error=True)
+            if not key:
+                # try legacy
+                legacy = data.get("private_key")
+                if not legacy:
+                    key_file = profile_json.parent / "privkey"
+                    if key_file.exists():
+                        try:
+                            legacy = key_file.read_text().strip()
+                        except Exception:
+                            legacy = None
+                if legacy:
+                    key = legacy
+                else:
+                    failures.append(f"{profile_name}: {err or 'MISSING'}")
+                    continue
+
+            ok, err2 = secrets_store.set_private_key(profile_name, key, new_pwd)
+            if not ok:
+                failures.append(f"{profile_name}: {err2}")
+                continue
+
+            data.pop("private_key", None)
+            try:
+                self._write_profile(profile_name, data)
+            except Exception:
+                pass
+            for legacy_name in ("privkey", "config.ini"):
+                try:
+                    legacy_path = profile_json.parent / legacy_name
+                    if legacy_path.exists():
+                        legacy_path.unlink()
+                except Exception:
+                    pass
+
+        if failures:
+            return "Re-encryption failed: " + "; ".join(failures[:5]) + (" ..." if len(failures) > 5 else "")
+        return None
 
 
     def get_profile(self, profile):
         with (PROFILES_DIR / profile / 'profile.json').open() as fd:
             data = json.load(fd)
+            self._migrate_profile_secret(profile, data)
+            key, err = self._get_private_key_status(profile, data)
+            data['private_key'] = key or ""
+            if err:
+                data['private_key_error'] = err
             return data
 
     def list_profiles(self):
@@ -911,6 +1096,11 @@ class Vpn:
                     data = json.load(fd)
             except Exception:
                 continue  # skip broken files
+            self._migrate_profile_secret(path.parent.name, data)
+            key, err = self._get_private_key_status(path.parent.name, data)
+            data['private_key'] = key or ""
+            if err:
+                data['private_key_error'] = err
             raw_profiles[path.parent.name] = data
 
         active_by_privkey = {}

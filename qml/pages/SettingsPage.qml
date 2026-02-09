@@ -1,5 +1,7 @@
 import QtQuick 2.0
+import QtQuick.Layouts 1.12
 import Lomiri.Components 1.3 as UITK
+import Lomiri.Components.Popups 1.3 as Popups
 import io.thp.pyotherside 1.3
 import Qt.labs.settings 1.0
 
@@ -141,6 +143,14 @@ UITK.Page {
             }
 
             SettingsItem {
+                title: i18n.tr("Re-encrypt stored keys")
+                description: i18n.tr("Use when your password has changed")
+                onClicked: {
+                    Popups.PopupUtils.open(rekeyDialogComponent, settingsPage)
+                }
+            }
+
+            SettingsItem {
                 title: i18n.tr("Re-check kernel module")
                 description: i18n.tr("Run kernel and sudo check wizard")
                 onClicked: {
@@ -159,11 +169,66 @@ UITK.Page {
         }
     }
 
+    Component {
+        id: rekeyDialogComponent
+        Popups.Dialog {
+            id: rekeyDialog
+            title: i18n.tr("Re-encrypt keys")
+            text: i18n.tr("Enter old and new password")
+
+            UITK.TextField {
+                id: oldPwdField
+                placeholderText: i18n.tr("Old password")
+                echoMode: TextInput.Password
+            }
+            UITK.TextField {
+                id: newPwdField
+                placeholderText: i18n.tr("New password")
+                echoMode: TextInput.Password
+            }
+
+            RowLayout {
+                spacing: units.gu(1)
+                UITK.Button {
+                    text: i18n.tr("Cancel")
+                    onClicked: Popups.PopupUtils.close(rekeyDialog)
+                }
+                UITK.Button {
+                    text: i18n.tr("Re-encrypt")
+                    color: UITK.LomiriColors.green
+                    onClicked: {
+                        if (!oldPwdField.text || !newPwdField.text) {
+                            toast.show(i18n.tr("Both passwords are required"))
+                            return
+                        }
+                        python.call('vpn.instance.rekey_secrets',
+                                    [oldPwdField.text, newPwdField.text],
+                                    function (err) {
+                                        if (err) {
+                                            toast.show(i18n.tr("Re-encrypt failed: ") + err)
+                                        } else {
+                                            toast.show(i18n.tr("Keys re-encrypted"))
+                                            if (typeof root !== "undefined") {
+                                                root.pwd = newPwdField.text
+                                            }
+                                            python.call('vpn.instance.set_pwd', [newPwdField.text], function(){})
+                                            Popups.PopupUtils.close(rekeyDialog)
+                                        }
+                                    })
+                    }
+                }
+            }
+        }
+    }
+
     Python {
         id: python
         Component.onCompleted: {
             addImportPath(Qt.resolvedUrl('../../src/'))
             importModule('vpn', function () {
+                if (typeof root !== "undefined" && root.pwd !== undefined) {
+                    python.call('vpn.instance.set_pwd', [root.pwd], function(result){});
+                }
                 python.call('vpn.instance.get_wireguard_version', [], function(res) {
                     var ver = res && res.version ? res.version : ""
                     versionLabel = "WireGuard for Ubuntu Touch "

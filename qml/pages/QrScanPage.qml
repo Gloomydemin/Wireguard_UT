@@ -110,11 +110,13 @@ UITK.Page {
             if (result.error) {
                 if (result.error === "NO_QR") {
                     decoding = false
+                    cleanupTemp(cleanPath)
                     return
                 }
                 decoding = false
                 statusText.text = i18n.tr("Could not decode QR")
                 toast.show(i18n.tr("QR error: ") + result.error)
+                cleanupTemp(cleanPath)
                 return
             }
             decoding = false
@@ -123,7 +125,15 @@ UITK.Page {
             camera.stop()
             qrPage.qrDecoded(result.text)
             pageStack.pop()
+            cleanupTemp(cleanPath)
         })
+    }
+
+    function cleanupTemp(path) {
+        if (!path || !python) {
+            return
+        }
+        python.call('vpn.instance.delete_temp_file', [path], function() {})
     }
 
     Component.onCompleted: {
@@ -134,5 +144,13 @@ UITK.Page {
         scanning = false
         captureTimer.stop()
         camera.stop()
+    }
+
+    Python {
+        id: python
+        Component.onCompleted: {
+            addImportPath(Qt.resolvedUrl('../../src/'))
+            importModule('vpn', function () {})
+        }
     }
 }

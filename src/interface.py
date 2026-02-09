@@ -4,10 +4,13 @@ import os
 import socket
 import json
 import re
+import tempfile
 
 from pathlib import Path
 
 from vendor_paths import resolve_vendor_binary
+from profile import PROFILES_DIR
+from wg_config import build_config
 
 WG_PATH = resolve_vendor_binary("wg")
 WIREGUARD_GO_PATH = resolve_vendor_binary("wireguard")
@@ -15,11 +18,45 @@ log = logging.getLogger(__name__)
 
 class Interface:
     def __init__(self, sudo_pwd):
-        # sudo_cmd_list variable is a list like: ['echo', 'password', '|', '/usr/bin/sudo', '-S']
+        # Sudo password is kept in-memory and passed via stdin (no argv leaks).
         self._sudo_pwd = sudo_pwd
 
-    def serve_sudo_pwd(self):
-        return subprocess.Popen(['echo', self._sudo_pwd], stdout=subprocess.PIPE)
+    def _sudo_cmd(self):
+        if self._sudo_pwd:
+            return ['/usr/bin/sudo', '-S']
+        return ['/usr/bin/sudo', '-n']
+
+    def _sudo_input(self):
+        if not self._sudo_pwd:
+            return None
+        return (self._sudo_pwd + '\n').encode()
+
+    def _parse_endpoint_host(self, endpoint):
+        if not endpoint:
+            return None
+        endpoint = endpoint.strip()
+        if endpoint.startswith('['):
+            end = endpoint.find(']')
+            if end != -1:
+                return endpoint[1:end]
+        if ':' in endpoint:
+            return endpoint.rsplit(':', 1)[0]
+        return endpoint
+
+    def _resolve_endpoint_ips(self, endpoint):
+        host = self._parse_endpoint_host(endpoint)
+        if not host:
+            return []
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except Exception:
+            return []
+        ips = []
+        for info in infos:
+            ip = info[4][0]
+            if ip not in ips:
+                ips.append(ip)
+        return ips
 
     def _connect(self, profile, config_file, use_kmod):
         interface_name = profile['interface_name']
@@ -29,10 +66,9 @@ class Interface:
         if use_kmod:
             if self.userspace_running():
                 self.stop_userspace_daemons()
-            serve_pwd = self.serve_sudo_pwd()
-            subprocess.run(['/usr/bin/sudo', '-S', 'ip', 'link', 'add', interface_name, 'type', 'wireguard'],
-                            stdin=serve_pwd.stdout,
-                            check=True)
+            subprocess.run(self._sudo_cmd() + ['ip', 'link', 'add', interface_name, 'type', 'wireguard'],
+                           input=self._sudo_input(),
+                           check=True)
             err = self.config_interface(profile, config_file)
             if err:
                 return err
@@ -66,13 +102,19 @@ class Interface:
 
 
     def start_daemon(self, profile, config_file):
-        serve_pwd = self.serve_sudo_pwd()
-        p = subprocess.Popen(['/usr/bin/sudo', '-S', '/usr/bin/python3', 'src/daemon.py', profile['profile_name'], self._sudo_pwd],
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE,
-                              stdin=serve_pwd.stdout,
-                              start_new_session=True,
+        p = subprocess.Popen(['/usr/bin/python3', 'src/daemon.py', profile['profile_name']],
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
+                             stdin=subprocess.PIPE,
+                             start_new_session=True,
                             )
+        try:
+            if p.stdin:
+                p.stdin.write((self._sudo_pwd or "") .encode() + b"\n")
+                p.stdin.flush()
+        finally:
+            if p.stdin:
+                p.stdin.close()
         print('started daemon')
 
     def userspace_running(self):
@@ -110,23 +152,59 @@ class Interface:
     def stop_userspace_daemons(self):
         if not self.userspace_running():
             return
-        serve_pwd = self.serve_sudo_pwd()
         subprocess.run(
-            ['/usr/bin/sudo', '-S', 'pkill', '-f', str(WIREGUARD_GO_PATH)],
-            stdin=serve_pwd.stdout,
+            self._sudo_cmd() + ['pkill', '-f', str(WIREGUARD_GO_PATH)],
+            input=self._sudo_input(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
         )
 
+    def _get_default_route(self, family):
+        cmd = ['ip']
+        if family == socket.AF_INET6:
+            cmd.append('-6')
+        elif family == socket.AF_INET:
+            cmd.append('-4')
+        cmd += ['route', 'show', 'default']
+        try:
+            output = subprocess.check_output(cmd).decode(errors='ignore').splitlines()
+        except Exception:
+            return None, None
+        for line in output:
+            parts = line.split()
+            if not parts:
+                continue
+            gw = None
+            dev = None
+            if 'via' in parts:
+                try:
+                    gw = parts[parts.index('via') + 1]
+                except Exception:
+                    gw = None
+            if 'dev' in parts:
+                try:
+                    dev = parts[parts.index('dev') + 1]
+                except Exception:
+                    dev = None
+            return gw, dev
+        return None, None
+
     def get_default_gateway(self):
-        p = subprocess.check_output(['ip', 'route', 'show', 'default']).decode()
-        # default via 10.0.2.2 dev ens5
-        return p.split('via')[1].split()[0]
+        gw, _ = self._get_default_route(socket.AF_INET)
+        return gw
 
     def get_default_interface(self):
-        p = subprocess.check_output(['ip', 'route', 'show', 'default']).decode()
-        return p.split('dev')[1].split()[0]
+        _, dev = self._get_default_route(socket.AF_INET)
+        return dev
+
+    def get_default_gateway_v6(self):
+        gw, _ = self._get_default_route(socket.AF_INET6)
+        return gw
+
+    def get_default_interface_v6(self):
+        _, dev = self._get_default_route(socket.AF_INET6)
+        return dev
 
     def list_wireguard_interfaces(self):
         try:
@@ -167,32 +245,55 @@ class Interface:
         log.info('Configuring interface %s', interface_name)
 
         def sudo_run(cmd, check=True):
-            serve_pwd = self.serve_sudo_pwd()
             return subprocess.run(
-                ['/usr/bin/sudo', '-S'] + cmd,
-                stdin=serve_pwd.stdout,
+                self._sudo_cmd() + cmd,
+                input=self._sudo_input(),
                 check=check
             )
 
         # Remove default routes before changes
         default_gw = self.get_default_gateway()
         real_iface = self.get_default_interface()
+        default_gw_v6 = self.get_default_gateway_v6()
+        real_iface_v6 = self.get_default_interface_v6()
 
         # 1. interface down
         sudo_run(['ip', 'link', 'set', 'down', 'dev', interface_name], check=False)
 
-        # 2. setconf
-        p = subprocess.Popen(
-            ['/usr/bin/sudo', '-S', str(WG_PATH), 'setconf', interface_name, str(config_file)],
-            stdin=self.serve_sudo_pwd().stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        p.wait()
-        if p.returncode != 0:
-            err = p.stderr.read().decode()
+        # 2. setconf (use temp config to avoid writing secrets to disk)
+        private_key = (profile.get('private_key') or "").strip()
+        if not private_key:
+            err = f'Private key not found for {profile.get("profile_name", interface_name)}'
             log.error(err)
             return err
+        config_text = build_config(profile, private_key)
+        tmp_path = None
+        try:
+            tmp_dir = Path(config_file).parent if config_file else None
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=str(tmp_dir) if tmp_dir else None) as tf:
+                tf.write(config_text)
+                tmp_path = tf.name
+            try:
+                os.chmod(tmp_path, 0o600)
+            except Exception:
+                pass
+            p = subprocess.Popen(
+                self._sudo_cmd() + [str(WG_PATH), 'setconf', interface_name, tmp_path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = p.communicate(input=self._sudo_input())
+            if p.returncode != 0:
+                err = (stderr or b'').decode(errors='ignore')
+                log.error(err)
+                return err
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
 
         # 3. address
         ip_raw = profile.get('ip_address', '').strip()
@@ -215,7 +316,6 @@ class Interface:
         # ---------- ROUTING ----------
 
         # 5. endpoint exclusion
-        endpoint_ip = None
         endpoint = None
         for peer in profile.get('peers', []):
             if peer.get('endpoint'):
@@ -223,39 +323,58 @@ class Interface:
                 break
 
         if endpoint:
-            endpoint_host = endpoint.split(':')[0]
-            try:
-                endpoint_ip = socket.gethostbyname(endpoint_host)
-                sudo_run([
-                    'ip', 'route', 'replace',
-                    f'{endpoint_ip}/32',
-                    'via', default_gw,
-                    'dev', real_iface
-                ], check=False)
-
-                self._last_endpoint_ip = endpoint_ip
-                log.info('Endpoint route added: %s via %s (%s)', endpoint_ip, default_gw, real_iface)
-
-            except Exception as e:
-                log.warning('Failed to add endpoint route: %s', e)
-                self._last_endpoint_ip = None
+            endpoint_ips = self._resolve_endpoint_ips(endpoint)
+            if not endpoint_ips:
+                log.warning('Failed to resolve endpoint: %s', endpoint)
+            for endpoint_ip in endpoint_ips:
+                try:
+                    if ':' in endpoint_ip:
+                        if default_gw_v6 and real_iface_v6:
+                            sudo_run([
+                                'ip', '-6', 'route', 'replace',
+                                f'{endpoint_ip}/128',
+                                'via', default_gw_v6,
+                                'dev', real_iface_v6
+                            ], check=False)
+                            log.info('Endpoint IPv6 route added: %s via %s (%s)', endpoint_ip, default_gw_v6, real_iface_v6)
+                    else:
+                        if default_gw and real_iface:
+                            sudo_run([
+                                'ip', 'route', 'replace',
+                                f'{endpoint_ip}/32',
+                                'via', default_gw,
+                                'dev', real_iface
+                            ], check=False)
+                            log.info('Endpoint IPv4 route added: %s via %s (%s)', endpoint_ip, default_gw, real_iface)
+                except Exception as e:
+                    log.warning('Failed to add endpoint route: %s', e)
 
         # 6. AllowedIPs
-        add_default = False
+        add_default_v4 = False
+        add_default_v6 = False
         for peer in profile.get('peers', []):
             for prefix in peer.get('allowed_prefixes', '').split(','):
                 prefix = prefix.strip()
                 if not prefix:
                     continue
-                if prefix in ('0.0.0.0/0', '::/0'):
-                    add_default = True
+                if prefix == '0.0.0.0/0':
+                    add_default_v4 = True
                     continue
-                sudo_run(['ip', 'route', 'replace', prefix, 'dev', interface_name], check=False)
+                if prefix == '::/0':
+                    add_default_v6 = True
+                    continue
+                if ':' in prefix:
+                    sudo_run(['ip', '-6', 'route', 'replace', prefix, 'dev', interface_name], check=False)
+                else:
+                    sudo_run(['ip', 'route', 'replace', prefix, 'dev', interface_name], check=False)
 
         # 7. default route via wg
-        if add_default:
+        if add_default_v4:
             sudo_run(['ip', 'route', 'replace', 'default', 'dev', interface_name], check=False)
-            log.info('Default route via %s enabled', interface_name)
+            log.info('Default IPv4 route via %s enabled', interface_name)
+        if add_default_v6:
+            sudo_run(['ip', '-6', 'route', 'replace', 'default', 'dev', interface_name], check=False)
+            log.info('Default IPv6 route via %s enabled', interface_name)
 
         # ---------- DNS ----------
         dns_servers = [dns.strip() for dns in profile.get('dns_servers', '').split(',') if dns.strip()]
@@ -269,15 +388,15 @@ class Interface:
             extra_route = extra_route.strip()
             if not extra_route:
                 continue
-            sudo_run(['ip', 'route', 'replace', extra_route, 'dev', interface_name], check=False)
+            if ':' in extra_route:
+                sudo_run(['ip', '-6', 'route', 'replace', extra_route, 'dev', interface_name], check=False)
+            else:
+                sudo_run(['ip', 'route', 'replace', extra_route, 'dev', interface_name], check=False)
 
         return None
 
 
     def disconnect(self, interface_name):
-        CONFIG_DIR = Path('/home/phablet/.local/share/wireguard.sysadmin')
-        PROFILES_DIR = CONFIG_DIR / 'profiles'
-
         # Always stop userspace daemons to avoid stale wireguard-go processes
         try:
             self.stop_userspace_daemons()
@@ -286,10 +405,9 @@ class Interface:
             pass
 
         def sudo_run(cmd, check=False):
-            serve_pwd = self.serve_sudo_pwd()
             return subprocess.run(
-                ['/usr/bin/sudo', '-S'] + cmd,
-                stdin=serve_pwd.stdout,
+                self._sudo_cmd() + cmd,
+                input=self._sudo_input(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=check
@@ -316,32 +434,38 @@ class Interface:
 
         if iface_exists:
             sudo_run(['ip', 'route', 'flush', 'dev', interface_name])
+            sudo_run(['ip', '-6', 'route', 'flush', 'dev', interface_name], check=False)
             sudo_run(['resolvectl', 'revert', interface_name])
             sudo_run(['ip', 'link', 'set', 'down', 'dev', interface_name])
             sudo_run(['ip', 'link', 'del', 'dev', interface_name])
 
         # Drop endpoint routes via physical interface
-        try:
-            default_gw = self.get_default_gateway()
-            real_iface = self.get_default_interface()
-        except Exception:
-            default_gw = None
-            real_iface = None
+        default_gw = self.get_default_gateway()
+        real_iface = self.get_default_interface()
+        default_gw_v6 = self.get_default_gateway_v6()
+        real_iface_v6 = self.get_default_interface_v6()
 
-        if profile and 'peers' in profile and default_gw and real_iface:
+        if profile and 'peers' in profile:
             for peer in profile['peers']:
                 endpoint = peer.get('endpoint')
                 if endpoint:
-                    endpoint_host = endpoint.split(':')[0]
-                    try:
-                        endpoint_ip = socket.gethostbyname(endpoint_host)
-                        routes = subprocess.check_output(['ip', 'route']).decode().splitlines()
-                        for line in routes:
-                            if endpoint_ip in line:
-                                parts = line.split()
-                                sudo_run(['ip', 'route', 'del'] + parts)
-                    except Exception:
-                        pass
+                    endpoint_ips = self._resolve_endpoint_ips(endpoint)
+                    for endpoint_ip in endpoint_ips:
+                        try:
+                            if ':' in endpoint_ip:
+                                routes = subprocess.check_output(['ip', '-6', 'route']).decode().splitlines()
+                                for line in routes:
+                                    if endpoint_ip in line:
+                                        parts = line.split()
+                                        sudo_run(['ip', '-6', 'route', 'del'] + parts)
+                            else:
+                                routes = subprocess.check_output(['ip', 'route']).decode().splitlines()
+                                for line in routes:
+                                    if endpoint_ip in line:
+                                        parts = line.split()
+                                        sudo_run(['ip', 'route', 'del'] + parts)
+                        except Exception:
+                            pass
 
         # Restore default route via physical interface
         if default_gw and real_iface:
@@ -349,6 +473,13 @@ class Interface:
                 routes = subprocess.check_output(['ip', 'route', 'show', 'default']).decode()
                 if f'dev {real_iface}' not in routes:
                     sudo_run(['ip', 'route', 'replace', 'default', 'via', default_gw, 'dev', real_iface])
+            except Exception:
+                pass
+        if default_gw_v6 and real_iface_v6:
+            try:
+                routes = subprocess.check_output(['ip', '-6', 'route', 'show', 'default']).decode()
+                if f'dev {real_iface_v6}' not in routes:
+                    sudo_run(['ip', '-6', 'route', 'replace', 'default', 'via', default_gw_v6, 'dev', real_iface_v6])
             except Exception:
                 pass
 
@@ -359,12 +490,8 @@ class Interface:
 
     def _get_wg_status(self):
         if Path('/usr/bin/sudo').exists():
-            if self._sudo_pwd:
-                sudo_cmd = ['/usr/bin/sudo', '-S']
-                stdin = self.serve_sudo_pwd().stdout
-            else:
-                sudo_cmd = ['/usr/bin/sudo', '-n']
-                stdin = None
+            sudo_cmd = self._sudo_cmd()
+            stdin = self._sudo_input()
             try:
                 cmd = [str(WG_PATH), 'show', 'all', 'dump']
                 # Prefer external timeout to avoid PermissionError on kill
@@ -372,7 +499,7 @@ class Interface:
                     cmd = ['/usr/bin/timeout', '2'] + cmd
                 p = subprocess.run(
                     sudo_cmd + cmd,
-                    stdin=stdin,
+                    input=stdin,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     check=False
