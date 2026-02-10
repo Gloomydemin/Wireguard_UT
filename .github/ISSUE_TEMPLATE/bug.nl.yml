@@ -1,0 +1,23 @@
+name: "🐛 Wireguard_qml-bug"
+description: "Probleem melden"
+body:
+  - type: textarea
+    id: device
+    attributes:
+      label: "📱 Apparaat en Ubuntu Touch-versie"
+      placeholder: "Pixel 3a, UT 20.04 OTA-5"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "🔄 Stappen om te reproduceren"
+      placeholder: "1. Configuratie importeren\n2. Verbinden\n3. Crash"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "📋 Logs (VERPLICHT)"
+      description: "journalctl, clickable logs, qmlscene"
+      render: shell

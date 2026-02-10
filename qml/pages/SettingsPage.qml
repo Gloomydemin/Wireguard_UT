@@ -162,7 +162,7 @@ UITK.Page {
             SettingsItem {
                 title: i18n.tr("Bug report")
                 description: i18n.tr("Report a problem on GitHub")
-                onClicked: Qt.openUrlExternally("https://github.com/Gloomydemin/Wireguard_qml/issues")
+                onClicked: Qt.openUrlExternally("https://github.com/Gloomydemin/Wireguard_qml/issues/new/choose")
             }
 
             Column {

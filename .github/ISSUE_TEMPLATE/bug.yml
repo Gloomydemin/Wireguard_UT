@@ -1,0 +1,23 @@
+name: "🐛 Баг Wireguard_qml"
+description: "Сообщить об ошибке"
+body:
+  - type: textarea
+    id: device
+    attributes:
+      label: "📱 Устройство и версия Ubuntu Touch"
+      placeholder: "Pixel 3a, UT 20.04 OTA-5"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "🔄 Шаги воспроизведения"
+      placeholder: "1. Импорт конфигурации\n2. Подключение\n3. Краш"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "📋 Логи (ОБЯЗАТЕЛЬНО)"
+      description: "journalctl, clickable logs, qmlscene"
+      render: shell
