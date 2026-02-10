@@ -1,5 +1,13 @@
 build
 .clickable
+.pytest_cache/
+*.pyc
+*.click
+.venv/
+venv/
+.vscode/
+.idea/
+CMakeLists.txt.user*
 *.pot
 *.autosave
 __pycache__/
