@@ -266,6 +266,7 @@ Rectangle {
                     width: units.gu(2.8)
                     height: width
                     name: "camera"
+                    source: "../../assets/lomiri-camera-app.svg"
                     color: textColor
                 }
 
