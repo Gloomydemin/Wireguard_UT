@@ -3,6 +3,7 @@ build
 .pytest_cache/
 *.pyc
 *.click
+!packages/**/*.click
 .venv/
 venv/
 .vscode/
