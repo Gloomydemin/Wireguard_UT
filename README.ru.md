@@ -46,6 +46,12 @@ ip route add default dev wg0 table 51820
 ## Изменения и список функций
 Полный список изменений и функций: `docs/CHANGES.ru.md`.
 
+## ⭐ Поддержать разработку
+YooMoney:
+https://yoomoney.ru/to/4100119470150396
+
+Донаты идут на развитие open-source проектов.
+
 ## Мейнтейнер
 Sysadmin <bytebuddy@yandex.ru>
 

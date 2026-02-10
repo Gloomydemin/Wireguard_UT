@@ -49,6 +49,12 @@ ip route add default dev wg0 table 51820
 ## Changes & function map
 See `docs/CHANGES.md` for a full list of modifications and functions that were added or changed.
 
+## ⭐ Support development
+YooMoney:
+https://yoomoney.ru/to/4100119470150396
+
+Donations support open-source development.
+
 ## Maintainer
 Sysadmin <bytebuddy@yandex.ru>
 

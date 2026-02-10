@@ -47,6 +47,12 @@ ip route add default dev wg0 table 51820
 ## Änderungen & Funktionsliste
 Siehe `docs/CHANGES.de.md`.
 
+## ⭐ Entwicklung unterstützen
+YooMoney:
+https://yoomoney.ru/to/4100119470150396
+
+Spenden unterstützen die Entwicklung von Open-Source-Projekten.
+
 ## Maintainer
 Sysadmin <bytebuddy@yandex.ru>
 
