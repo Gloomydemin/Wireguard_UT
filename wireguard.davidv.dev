@@ -1,5 +1,0 @@
-#!/bin/sh
-cd /app
-export PYTHONPATH="/app/src:$PYTHONPATH"
-export QML2_IMPORT_PATH="/app"
-exec qmlscene qml/Main.qml
