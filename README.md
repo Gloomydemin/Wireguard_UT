@@ -11,6 +11,11 @@ Fork of the original wireguard_qml adapted and maintained for Ubuntu Touch commu
 - PreUp hooks (run commands before interface up)
 - Encrypted private key storage (password-based)
 
+## Screenshots
+![Main screen](screenshots/screenshot20260210_132652130.png)
+![Profile list](screenshots/screenshot20260210_132705511.png)
+![Profile details](screenshots/screenshot20260210_132712196.png)
+
 ## Building & installing
 Prerequisites: `clickable` 8.6+, Docker available, Ubuntu SDK 20.04 image.
 

@@ -9,6 +9,11 @@ Fork du projet d’origine wireguard_qml, adapté et maintenu pour les appareils
 - Hooks PreUp (commandes exécutées avant la mise en ligne de l’interface)
 - Stockage chiffré des clés privées (basé sur mot de passe)
 
+## Captures d’écran
+![Écran principal](screenshots/screenshot20260210_132652130.png)
+![Liste des profils](screenshots/screenshot20260210_132705511.png)
+![Détails du profil](screenshots/screenshot20260210_132712196.png)
+
 ## Compilation & installation
 Prérequis : `clickable` ≥ 8.6, Docker disponible, image Ubuntu SDK 20.04.
 

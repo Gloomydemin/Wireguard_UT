@@ -9,6 +9,11 @@ Fork van het originele wireguard_qml, aangepast en onderhouden voor Ubuntu‑Tou
 - PreUp‑hooks (commando’s vóór het omhoogbrengen van de interface)
 - Versleutelde opslag van private keys (wachtwoord‑gebaseerd)
 
+## Screenshots
+![Hoofdscherm](screenshots/screenshot20260210_132652130.png)
+![Profiellijst](screenshots/screenshot20260210_132705511.png)
+![Profieldetails](screenshots/screenshot20260210_132712196.png)
+
 ## Bouwen & installeren
 Vereisten: `clickable` ≥ 8.6, Docker beschikbaar, Ubuntu SDK 20.04‑image.
 
