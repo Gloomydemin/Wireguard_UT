@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import subprocess
 import os
@@ -86,6 +87,28 @@ def _validate_preup_command(cmd, hook_name="PreUp"):
         return None, f"{hook_name} command not available on this system: {base}"
     args[0] = resolved
     return args, None
+
+_DOMAIN_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+
+
+def _split_dns_entries(entries):
+    """Split a wg-quick style DNS list into server IPs and search domains."""
+    servers, domains = [], []
+    for entry in entries:
+        try:
+            ipaddress.ip_address(entry)
+            servers.append(entry)
+            continue
+        except ValueError:
+            pass
+        name = entry.rstrip(".")
+        bare = name[1:] if name.startswith("~") else name
+        if bare and len(bare) <= 253 and all(_DOMAIN_LABEL_RE.match(l) for l in bare.split(".")):
+            domains.append(name)
+        else:
+            log.warning('Ignoring invalid DNS entry: %s', entry)
+    return servers, domains
+
 
 class Interface:
     def __init__(self, sudo_pwd):
@@ -472,11 +495,12 @@ class Interface:
             log.info('Default IPv6 route via %s enabled', interface_name)
 
         # ---------- DNS ----------
-        dns_servers = [dns.strip() for dns in profile.get('dns_servers', '').split(',') if dns.strip()]
+        dns_entries = [dns.strip() for dns in profile.get('dns_servers', '').split(',') if dns.strip()]
+        dns_servers, dns_domains = _split_dns_entries(dns_entries)
         if dns_servers:
             if Path('/usr/bin/resolvectl').exists():
                 res = sudo_run(['resolvectl', 'dns', interface_name] + dns_servers, check=False)
-                res2 = sudo_run(['resolvectl', 'domain', interface_name, '~.'], check=False)
+                res2 = sudo_run(['resolvectl', 'domain', interface_name] + dns_domains + ['~.'], check=False)
                 if res.returncode != 0 or res2.returncode != 0:
                     log.warning('resolvectl failed for %s', interface_name)
                 else:

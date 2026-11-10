@@ -63,3 +63,22 @@ def test_delete_temp_file_inside_qr_dir():
     f.write_bytes(b"x")
     assert vpn.Vpn.delete_temp_file(None, str(f))["error"] is None
     assert not f.exists()
+
+
+@pytest.mark.parametrize("value,ok", [
+    ("fritz.box", True),
+    ("home.arpa", True),
+    ("~lan", True),
+    ("-evil", False),
+    ("bad domain", False),
+    ("", False),
+])
+def test_dns_search_domain(value, ok):
+    assert vpn._is_dns_search_domain(value) is ok
+
+
+def test_split_dns_entries_fritzbox():
+    servers, domains = interface._split_dns_entries(
+        ["192.168.178.1", "fd00::1", "fritz.box", "--evil"])
+    assert servers == ["192.168.178.1", "fd00::1"]
+    assert domains == ["fritz.box"]

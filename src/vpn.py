@@ -233,6 +233,18 @@ def _decode_qr_from_image_path(path, crop=None):
         for obj in reversed(owned):
             _GOBJECT_LIB.g_object_unref(obj)
 
+_DOMAIN_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+
+
+def _is_dns_search_domain(value):
+    value = (value or "").strip().rstrip(".")
+    if value.startswith("~"):
+        value = value[1:]
+    if not value or len(value) > 253:
+        return False
+    return all(_DOMAIN_LABEL_RE.match(label) for label in value.split("."))
+
+
 class Vpn:
     def __init__(self):
         self._sudo_pwd = None
@@ -640,11 +652,16 @@ class Vpn:
                     return 'Bad route ' + route + ': ' + str(e)
 
         if dns_servers:
+            # wg-quick semantics: entries that aren't IP addresses are DNS
+            # search domains (FRITZ!Box puts "fritz.box" here)
             for dns in _split_csv(dns_servers):
                 try:
                     ip_network(dns, strict=False)
-                except Exception as e:
-                    return 'Bad dns ' + dns + ': ' + str(e)
+                    continue
+                except ValueError:
+                    pass
+                if not _is_dns_search_domain(dns):
+                    return 'Bad dns ' + dns + ': not an IP address or domain name'
 
         if used_ifaces is None:
             used = set()
