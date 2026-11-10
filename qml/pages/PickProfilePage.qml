@@ -81,6 +81,13 @@ UITK.Page {
                     })
     }
 
+    // Errors stay on screen until the user confirms them (a toast vanishes
+    // after 2 s, too fast to read longer messages)
+    function showError(title, message) {
+        Popups.PopupUtils.open(errorDialogComponent, pickPage,
+                               { errorTitle: title, errorText: String(message) })
+    }
+
     function openQrScanPage() {
         var qrPage = stack.push(Qt.resolvedUrl("QrScanPage.qml"))
         qrPage.qrDecoded.connect(function(payload) {
@@ -113,7 +120,7 @@ UITK.Page {
                                                        connecting: false,
                                                        peers: []
                                                    })
-                            toast.show(i18n.tr("Failed:") + " " + error_msg)
+                            showError(i18n.tr("Connection failed"), error_msg)
                             return
                         }
                         // сразу показать, что соединяемся/соединены; уточним после опроса
@@ -165,7 +172,7 @@ UITK.Page {
         importProgressModal.close()
         if (result.error) {
             console.log("Import error:", result.error)
-            toast.show(i18n.tr("Import failed: ") + result.error)
+            showError(i18n.tr("Import failed"), result.error)
             return
         }
         console.log("Import success:", result)
@@ -429,6 +436,33 @@ Rectangle {
                                {interfaceName: "wg" + listmodel.count})
                 }
             }
+        }
+    }
+}
+
+Component {
+    id: errorDialogComponent
+    Popups.Dialog {
+        id: errorDialog
+        property string errorTitle: i18n.tr("Error")
+        property string errorText: ""
+        title: errorTitle
+
+        // selectable, so the message can be copied for a bug report
+        UITK.TextArea {
+            width: parent.width
+            text: errorDialog.errorText
+            readOnly: true
+            selectByMouse: true
+            autoSize: true
+            maximumLineCount: 12
+            wrapMode: TextEdit.Wrap
+        }
+
+        UITK.Button {
+            text: i18n.tr("OK")
+            color: UITK.LomiriColors.green
+            onClicked: Popups.PopupUtils.close(errorDialog)
         }
     }
 }

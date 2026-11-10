@@ -142,7 +142,7 @@ def daemonize():
     # decouple from parent environment
     os.chdir('/')
     os.setsid()
-    os.umask(0)
+    os.umask(0o077)
 
     # do second fork
     try:
@@ -172,10 +172,9 @@ if __name__ == '__main__':
         sys.stderr.write("Missing profile name\n")
         sys.exit(2)
     profile_name = sys.argv[1]
-    if len(sys.argv) >= 3:
-        sudo_pwd = sys.argv[2]
-    else:
-        sudo_pwd = _read_pwd_from_stdin()
+    # The password is only accepted via stdin; passing it in argv would make
+    # it visible to every process via /proc/<pid>/cmdline.
+    sudo_pwd = _read_pwd_from_stdin()
     logging.basicConfig(filename=str(LOG_DIR / 'daemon-{}.log'.format(profile_name)),
                         level=logging.INFO,
                         format='%(asctime)s [%(levelname)s] %(name)s %(message)s')

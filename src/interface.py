@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 import subprocess
 import os
@@ -25,8 +26,17 @@ SAFE_PREUP_ALLOWED = {
     "nft",
     "sysctl",
     "wg",
-    "wg-quick",
 }
+# Arguments that would let an allowed binary run arbitrary commands or read
+# commands from a file, which defeats the purpose of safe mode.
+SAFE_PREUP_BLOCKED_ARGS = {
+    "ip": {"exec", "-b", "-batch", "-force", "-n", "-netns"},
+    "nft": {"-f", "--file", "-i", "--interactive"},
+    "iptables": {"--modprobe"},
+    "ip6tables": {"--modprobe"},
+    "sysctl": {"-p", "--load", "--system", "-f"},
+}
+SAFE_SYSCTL_PREFIXES = ("net.",)
 SAFE_PREUP_BLOCK_CHARS = set("|&><`$(){}[]")
 
 def _resolve_preup_binary(name):
@@ -61,11 +71,44 @@ def _validate_preup_command(cmd, hook_name="PreUp"):
         return None, f"{hook_name} command not allowed in safe mode: {base}"
     if "/" in args[0] and not os.path.isabs(args[0]):
         return None, f"{hook_name} command path must be absolute"
+    blocked = SAFE_PREUP_BLOCKED_ARGS.get(base, set())
+    for arg in args[1:]:
+        if arg in blocked or any(arg.startswith(b + "=") for b in blocked if b.startswith("--")):
+            return None, f"{hook_name} argument not allowed in safe mode: {arg}"
+    if base == "sysctl":
+        for arg in args[1:]:
+            if arg.startswith("-"):
+                continue
+            key = arg.split("=", 1)[0].strip().replace("/", ".")
+            if not key.startswith(SAFE_SYSCTL_PREFIXES):
+                return None, f"{hook_name} sysctl key not allowed in safe mode: {key}"
     resolved = _resolve_preup_binary(args[0] if "/" in args[0] else base)
     if not resolved:
         return None, f"{hook_name} command not available on this system: {base}"
     args[0] = resolved
     return args, None
+
+_DOMAIN_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
+
+
+def _split_dns_entries(entries):
+    """Split a wg-quick style DNS list into server IPs and search domains."""
+    servers, domains = [], []
+    for entry in entries:
+        try:
+            ipaddress.ip_address(entry)
+            servers.append(entry)
+            continue
+        except ValueError:
+            pass
+        name = entry.rstrip(".")
+        bare = name[1:] if name.startswith("~") else name
+        if bare and len(bare) <= 253 and all(_DOMAIN_LABEL_RE.match(l) for l in bare.split(".")):
+            domains.append(name)
+        else:
+            log.warning('Ignoring invalid DNS entry: %s', entry)
+    return servers, domains
+
 
 class Interface:
     def __init__(self, sudo_pwd):
@@ -357,7 +400,7 @@ class Interface:
             log.error(err)
             return err
 
-        addr_list = [a for a in re.split(r'[\\s,]+', ip_raw) if a]
+        addr_list = [a for a in re.split(r'[\s,]+', ip_raw) if a]
 
         # Replace the first address, add the rest (so multi-IP configs work)
         sudo_run(['ip', 'address', 'replace', addr_list[0], 'dev', interface_name])
@@ -368,7 +411,7 @@ class Interface:
         pre_up = (profile.get('pre_up') or '').strip()
         safe_preup = profile.get('safe_preup', True)
         if pre_up:
-            for cmd in [c.strip() for c in re.split(r'[;\\n]+', pre_up) if c.strip()]:
+            for cmd in [c.strip() for c in re.split(r'[;\n]+', pre_up) if c.strip()]:
                 log.info('Running PreUp: %s', cmd)
                 if safe_preup:
                     args, err = _validate_preup_command(cmd, "PreUp")
@@ -452,11 +495,12 @@ class Interface:
             log.info('Default IPv6 route via %s enabled', interface_name)
 
         # ---------- DNS ----------
-        dns_servers = [dns.strip() for dns in profile.get('dns_servers', '').split(',') if dns.strip()]
+        dns_entries = [dns.strip() for dns in profile.get('dns_servers', '').split(',') if dns.strip()]
+        dns_servers, dns_domains = _split_dns_entries(dns_entries)
         if dns_servers:
             if Path('/usr/bin/resolvectl').exists():
                 res = sudo_run(['resolvectl', 'dns', interface_name] + dns_servers, check=False)
-                res2 = sudo_run(['resolvectl', 'domain', interface_name, '~.'], check=False)
+                res2 = sudo_run(['resolvectl', 'domain', interface_name] + dns_domains + ['~.'], check=False)
                 if res.returncode != 0 or res2.returncode != 0:
                     log.warning('resolvectl failed for %s', interface_name)
                 else:
@@ -477,7 +521,7 @@ class Interface:
         # PostUp hooks (wg-quick compatible)
         post_up = (profile.get('post_up') or '').strip()
         if post_up:
-            for cmd in [c.strip() for c in re.split(r'[;\\n]+', post_up) if c.strip()]:
+            for cmd in [c.strip() for c in re.split(r'[;\n]+', post_up) if c.strip()]:
                 log.info('Running PostUp: %s', cmd)
                 if safe_preup:
                     args, err = _validate_preup_command(cmd, "PostUp")
@@ -530,7 +574,7 @@ class Interface:
         # PreDown hooks (wg-quick compatible)
         pre_down = (profile.get('pre_down') or '').strip() if profile else ""
         if pre_down:
-            for cmd in [c.strip() for c in re.split(r'[;\\n]+', pre_down) if c.strip()]:
+            for cmd in [c.strip() for c in re.split(r'[;\n]+', pre_down) if c.strip()]:
                 log.info('Running PreDown: %s', cmd)
                 if safe_preup:
                     args, err = _validate_preup_command(cmd, "PreDown")
@@ -607,7 +651,7 @@ class Interface:
         # PostDown hooks (wg-quick compatible)
         post_down = (profile.get('post_down') or '').strip() if profile else ""
         if post_down:
-            for cmd in [c.strip() for c in re.split(r'[;\\n]+', post_down) if c.strip()]:
+            for cmd in [c.strip() for c in re.split(r'[;\n]+', post_down) if c.strip()]:
                 log.info('Running PostDown: %s', cmd)
                 if safe_preup:
                     args, err = _validate_preup_command(cmd, "PostDown")

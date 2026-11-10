@@ -69,12 +69,16 @@ def _load_qr_libs():
     _GDK_LIB.gdk_pixbuf_get_pixels.argtypes = [ctypes.c_void_p]
     _GDK_LIB.gdk_pixbuf_scale_simple.restype = ctypes.c_void_p
     _GDK_LIB.gdk_pixbuf_scale_simple.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    _GDK_LIB.gdk_pixbuf_new_subpixbuf.restype = ctypes.c_void_p
+    _GDK_LIB.gdk_pixbuf_new_subpixbuf.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
     _GOBJECT_LIB.g_object_unref.restype = None
     _GOBJECT_LIB.g_object_unref.argtypes = [ctypes.c_void_p]
 
     _ZBAR_LIB.zbar_image_scanner_create.restype = ctypes.c_void_p
     _ZBAR_LIB.zbar_image_scanner_destroy.argtypes = [ctypes.c_void_p]
+    _ZBAR_LIB.zbar_image_scanner_set_config.restype = ctypes.c_int
+    _ZBAR_LIB.zbar_image_scanner_set_config.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
     _ZBAR_LIB.zbar_image_create.restype = ctypes.c_void_p
     _ZBAR_LIB.zbar_image_destroy.argtypes = [ctypes.c_void_p]
     _ZBAR_LIB.zbar_image_set_format.argtypes = [ctypes.c_void_p, ctypes.c_uint]
@@ -92,7 +96,80 @@ def _load_qr_libs():
     return True
 
 
-def _decode_qr_from_image_path(path):
+QR_TMP_DIR = LOG_DIR / "qr"
+
+_ZBAR_QRCODE = 64
+_ZBAR_CFG_ENABLE = 0
+
+
+def _qr_tmp_dir():
+    QR_TMP_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(QR_TMP_DIR, 0o700)
+    except Exception:
+        pass
+    return QR_TMP_DIR
+
+
+def _is_qr_tmp_path(path):
+    try:
+        resolved = Path(path).resolve()
+        base = QR_TMP_DIR.resolve()
+    except Exception:
+        return False
+    return resolved.parent == base
+
+
+def _pixbuf_to_gray(pixbuf):
+    width = _GDK_LIB.gdk_pixbuf_get_width(pixbuf)
+    height = _GDK_LIB.gdk_pixbuf_get_height(pixbuf)
+    n_channels = _GDK_LIB.gdk_pixbuf_get_n_channels(pixbuf)
+    rowstride = _GDK_LIB.gdk_pixbuf_get_rowstride(pixbuf)
+    pixels = _GDK_LIB.gdk_pixbuf_get_pixels(pixbuf)
+    # last row may be shorter than rowstride
+    size = rowstride * (height - 1) + width * n_channels
+    raw = ctypes.string_at(pixels, size)
+    # Green channel is a good luminance proxy for black/white codes and lets
+    # us use fast slicing instead of a per-pixel Python loop.
+    offset = 1 if n_channels >= 3 else 0
+    gray = bytearray()
+    row_len = width * n_channels
+    for y in range(height):
+        start = y * rowstride
+        gray += raw[start + offset:start + row_len:n_channels]
+    return gray, width, height
+
+
+def _zbar_scan(gray, width, height):
+    scanner = _ZBAR_LIB.zbar_image_scanner_create()
+    image = _ZBAR_LIB.zbar_image_create()
+    buf = ctypes.create_string_buffer(bytes(gray), len(gray))
+    try:
+        # only look for QR codes: faster and fewer false positives
+        _ZBAR_LIB.zbar_image_scanner_set_config(scanner, 0, _ZBAR_CFG_ENABLE, 0)
+        _ZBAR_LIB.zbar_image_scanner_set_config(scanner, _ZBAR_QRCODE, _ZBAR_CFG_ENABLE, 1)
+        _ZBAR_LIB.zbar_image_set_format(image, _ZBAR_FOURCC_Y800)
+        _ZBAR_LIB.zbar_image_set_size(image, width, height)
+        _ZBAR_LIB.zbar_image_set_data(image, buf, len(gray), None)
+        _ZBAR_LIB.zbar_scan_image(scanner, image)
+        symbol = _ZBAR_LIB.zbar_image_first_symbol(image)
+        while symbol:
+            data = _ZBAR_LIB.zbar_symbol_get_data(symbol)
+            if data:
+                return data.decode("utf-8", "replace")
+            symbol = _ZBAR_LIB.zbar_symbol_next(symbol)
+        return None
+    finally:
+        _ZBAR_LIB.zbar_image_destroy(image)
+        _ZBAR_LIB.zbar_image_scanner_destroy(scanner)
+
+
+def _decode_qr_from_image_path(path, crop=None):
+    """Decode a QR code from an image file.
+
+    crop: optional [x, y, w, h] as fractions (0..1) of the image, used to
+    restrict decoding to the on-screen scan frame (more pixels per module).
+    """
     if not _load_qr_libs():
         return None, "QR decoder libraries are not available"
 
@@ -103,69 +180,70 @@ def _decode_qr_from_image_path(path):
     if not pixbuf:
         return None, "Failed to load image"
 
+    owned = [pixbuf]
     try:
         width = _GDK_LIB.gdk_pixbuf_get_width(pixbuf)
         height = _GDK_LIB.gdk_pixbuf_get_height(pixbuf)
+        regions = []
+        if crop and len(crop) == 4:
+            try:
+                cx, cy, cw, ch = [float(v) for v in crop]
+                # add some margin around the frame, QR codes are often held
+                # slightly outside of it
+                m = 0.08
+                cx, cy = max(0.0, cx - m), max(0.0, cy - m)
+                cw, ch = min(1.0 - cx, cw + 2 * m), min(1.0 - cy, ch + 2 * m)
+                x, y = int(cx * width), int(cy * height)
+                w, h = int(cw * width), int(ch * height)
+                if w > 32 and h > 32:
+                    sub = _GDK_LIB.gdk_pixbuf_new_subpixbuf(pixbuf, x, y, w, h)
+                    if sub:
+                        owned.append(sub)
+                        regions.append(sub)
+            except (TypeError, ValueError):
+                pass
+        regions.append(pixbuf)
 
-        max_dim = 640
-        if width > max_dim or height > max_dim:
-            scale = max_dim / float(max(width, height))
-            new_w = max(1, int(width * scale))
-            new_h = max(1, int(height * scale))
-            scaled = _GDK_LIB.gdk_pixbuf_scale_simple(pixbuf, new_w, new_h, 2)
-            _GOBJECT_LIB.g_object_unref(pixbuf)
-            if not scaled:
-                return None, "Failed to scale image"
-            pixbuf = scaled
-            width = new_w
-            height = new_h
-
-        n_channels = _GDK_LIB.gdk_pixbuf_get_n_channels(pixbuf)
-        rowstride = _GDK_LIB.gdk_pixbuf_get_rowstride(pixbuf)
-        pixels = _GDK_LIB.gdk_pixbuf_get_pixels(pixbuf)
-        size = rowstride * height
-        raw = ctypes.string_at(pixels, size)
+        for region in regions:
+            rw = _GDK_LIB.gdk_pixbuf_get_width(region)
+            rh = _GDK_LIB.gdk_pixbuf_get_height(region)
+            # try native size (capped) first, then a smaller one: zbar
+            # sometimes copes better with downscaled, less noisy images
+            tried = set()
+            for max_dim in (1400, 800):
+                scale = min(1.0, max_dim / float(max(rw, rh)))
+                tw, th = max(1, int(rw * scale)), max(1, int(rh * scale))
+                if (tw, th) in tried:
+                    continue
+                tried.add((tw, th))
+                if scale < 1.0:
+                    scaled = _GDK_LIB.gdk_pixbuf_scale_simple(region, tw, th, 2)
+                    if not scaled:
+                        continue
+                    owned.append(scaled)
+                    src = scaled
+                else:
+                    src = region
+                gray, gw, gh = _pixbuf_to_gray(src)
+                text = _zbar_scan(gray, gw, gh)
+                if text:
+                    return text, None
+        return None, None
     finally:
-        if pixbuf:
-            _GOBJECT_LIB.g_object_unref(pixbuf)
+        for obj in reversed(owned):
+            _GOBJECT_LIB.g_object_unref(obj)
 
-    gray = bytearray(width * height)
-    if n_channels >= 3:
-        for y in range(height):
-            row_start = y * rowstride
-            out_row = y * width
-            for x in range(width):
-                idx = row_start + x * n_channels
-                r = raw[idx]
-                g = raw[idx + 1]
-                b = raw[idx + 2]
-                gray[out_row + x] = (r * 30 + g * 59 + b * 11) // 100
-    else:
-        for y in range(height):
-            row_start = y * rowstride
-            out_row = y * width
-            for x in range(width):
-                idx = row_start + x * n_channels
-                gray[out_row + x] = raw[idx]
+_DOMAIN_LABEL_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$")
 
-    scanner = _ZBAR_LIB.zbar_image_scanner_create()
-    image = _ZBAR_LIB.zbar_image_create()
-    buf = ctypes.create_string_buffer(bytes(gray))
-    try:
-        _ZBAR_LIB.zbar_image_set_format(image, _ZBAR_FOURCC_Y800)
-        _ZBAR_LIB.zbar_image_set_size(image, width, height)
-        _ZBAR_LIB.zbar_image_set_data(image, buf, len(gray), None)
-        _ZBAR_LIB.zbar_scan_image(scanner, image)
-        symbol = _ZBAR_LIB.zbar_image_first_symbol(image)
-        if not symbol:
-            return None, None
-        data = _ZBAR_LIB.zbar_symbol_get_data(symbol)
-        if not data:
-            return None, None
-        return data.decode("utf-8", "replace"), None
-    finally:
-        _ZBAR_LIB.zbar_image_destroy(image)
-        _ZBAR_LIB.zbar_image_scanner_destroy(scanner)
+
+def _is_dns_search_domain(value):
+    value = (value or "").strip().rstrip(".")
+    if value.startswith("~"):
+        value = value[1:]
+    if not value or len(value) > 253:
+        return False
+    return all(_DOMAIN_LABEL_RE.match(label) for label in value.split("."))
+
 
 class Vpn:
     def __init__(self):
@@ -574,11 +652,16 @@ class Vpn:
                     return 'Bad route ' + route + ': ' + str(e)
 
         if dns_servers:
+            # wg-quick semantics: entries that aren't IP addresses are DNS
+            # search domains (FRITZ!Box puts "fritz.box" here)
             for dns in _split_csv(dns_servers):
                 try:
                     ip_network(dns, strict=False)
-                except Exception as e:
-                    return 'Bad dns ' + dns + ': ' + str(e)
+                    continue
+                except ValueError:
+                    pass
+                if not _is_dns_search_domain(dns):
+                    return 'Bad dns ' + dns + ': not an IP address or domain name'
 
         if used_ifaces is None:
             used = set()
@@ -1055,10 +1138,19 @@ class Vpn:
         except Exception as e:
             return {"error": str(e)}
 
-    def decode_qr_image(self, path):
+    def get_qr_tmp_dir(self):
+        try:
+            return {"error": None, "path": str(_qr_tmp_dir())}
+        except Exception as e:
+            return {"error": str(e), "path": ""}
+
+    def decode_qr_image(self, path, crop=None):
         if path and path.startswith("file://"):
             path = path[7:]
-        text, err = _decode_qr_from_image_path(path)
+        try:
+            text, err = _decode_qr_from_image_path(path, crop)
+        except Exception as e:
+            return {"error": str(e)}
         if err:
             return {"error": err}
         if not text:
@@ -1071,7 +1163,10 @@ class Vpn:
         try:
             if path.startswith("file://"):
                 path = path[7:]
-            if os.path.exists(path):
+            # only ever delete our own scan frames
+            if not _is_qr_tmp_path(path):
+                return {"error": "Refusing to delete file outside QR temp dir"}
+            if os.path.lexists(path):
                 os.remove(path)
         except Exception as e:
             return {"error": str(e)}
