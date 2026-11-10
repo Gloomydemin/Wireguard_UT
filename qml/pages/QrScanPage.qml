@@ -35,6 +35,9 @@ UITK.Page {
     Camera {
         id: camera
         captureMode: Camera.CaptureStillImage
+        // Ubuntu Touch backends default to auto flash, which fires the LED on
+        // every autofocus cycle. Start with the LED explicitly off.
+        flash.mode: Camera.FlashOff
 
         focus {
             // Continuous AF where available, otherwise single-shot AF that we
@@ -58,11 +61,14 @@ UITK.Page {
         onCameraStatusChanged: {
             if (cameraStatus === Camera.ActiveStatus) {
                 configureFocus()
+                applyFlash()
                 camera.searchAndLock()
             }
         }
 
         onLockStatusChanged: {
+            // some backends reset the flash mode during an AF cycle
+            applyFlash()
             if (lockStatus === Camera.Locked) {
                 focusIndicator.color = "#4caf50"
             } else if (lockStatus === Camera.Searching) {
@@ -259,9 +265,44 @@ UITK.Page {
         camera.digitalZoom = Math.max(1.0, Math.min(maxZ, z))
     }
 
+    function torchMode() {
+        var modes = camera.flash.supportedModes
+        var candidates = [Camera.FlashVideoLight, Camera.FlashTorch, Camera.FlashOn]
+        if (!modes || modes.length === 0) {
+            return Camera.FlashVideoLight
+        }
+        for (var i = 0; i < candidates.length; i++) {
+            if (modes.indexOf(candidates[i]) !== -1) {
+                return candidates[i]
+            }
+        }
+        return Camera.FlashVideoLight
+    }
+
+    function desiredFlashMode() {
+        return torchOn ? torchMode() : Camera.FlashOff
+    }
+
+    function applyFlash() {
+        var want = desiredFlashMode()
+        if (camera.flash.mode !== want) {
+            camera.flash.mode = want
+        }
+    }
+
     function setTorch(on) {
         torchOn = on
-        camera.flash.mode = on ? Camera.FlashVideoLight : Camera.FlashOff
+        applyFlash()
+    }
+
+    // Re-assert our choice whenever the backend changes the mode on its own
+    Connections {
+        target: camera.flash
+        onFlashModeChanged: {
+            if (scanning && camera.flash.mode !== desiredFlashMode()) {
+                camera.flash.mode = desiredFlashMode()
+            }
+        }
     }
 
     // Normalized rect of the scan frame within the grabbed preview image
@@ -308,6 +349,7 @@ UITK.Page {
     function captureStill() {
         capturingStill = true
         decoding = true
+        applyFlash()
         statusText.text = i18n.tr("Focusing…")
         camera.searchAndLock()
         stillDelay.restart()
@@ -364,9 +406,8 @@ UITK.Page {
         captureTimer.stop()
         refocusTimer.stop()
         stillDelay.stop()
-        if (torchOn) {
-            setTorch(false)
-        }
+        torchOn = false
+        camera.flash.mode = Camera.FlashOff
         camera.stop()
     }
 
